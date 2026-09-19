@@ -124,3 +124,12 @@ test('error de PCO: la solicitud queda "recibida" para reintentar', async () => 
   assert.match(db.prepare('SELECT error FROM applications WHERE id=?').get(id).error, /PCO caído/);
   assert.equal(sent.length, 0);
 });
+
+test('si dijo Sí pero no consta en PCO: el email lo menciona y el panel lo guarda', async () => {
+  reset(); person = { id: '57', url: 'https://pco/57' }; course = { bases1: true, bases2: false, gc: true };
+  const id = apply(av);
+  db.prepare('UPDATE applications SET self_bases2 = 1 WHERE id = ?').run(id);
+  await flow.process(id);
+  assert.match(to('ana@x.es')[0].html, /Nos indicaste que ya tienes Bases 2/);
+  assert.equal(db.prepare('SELECT self_bases2 s, pco_bases2 p FROM applications WHERE id=?').get(id).s, 1);
+});

@@ -49,6 +49,8 @@ function showLogin() {
 
 // ---------- Solicitudes ----------
 const mark = (v) => (v == null ? h('span', { class: 'muted' }, '–') : v ? h('span', { class: 'ok' }, '✓') : h('span', { class: 'no' }, '✗'));
+// Celda de curso: lo que consta en Planning Center y, debajo, lo que dijo la persona (⚠ si dijo Sí y no consta)
+const course = (pco, self) => h('td', {}, mark(pco), self == null ? null : h('div', { class: 'muted' }, `dijo ${self ? 'Sí' : 'No'}${pco === 0 && self ? ' ⚠' : ''}`));
 
 async function applicationsView(box) {
   const q = h('input', { type: 'search', placeholder: 'Buscar nombre, email, teléfono…' });
@@ -63,7 +65,7 @@ async function applicationsView(box) {
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null),
-        h('td', {}, mark(a.pco_bases1)), h('td', {}, mark(a.pco_bases2)), h('td', {}, mark(a.pco_gc)),
+        course(a.pco_bases1, a.self_bases1), course(a.pco_bases2, a.self_bases2), course(a.pco_gc, a.self_gc),
         h('td', {}, a.bases_name || a.bases_email || h('span', { class: 'muted' }, '–'), a.bases_email ? h('div', { class: 'muted' }, a.bases_status.replace('_', ' ')) : null),
         h('td', {}, h('div', { class: 'acts' },
           me.role === 'bases' ? [act(a.id, { bases_status: 'contactado' }, 'Contactado'), act(a.id, { bases_status: 'registrado' }, 'Registrado en Bases 2')] : [

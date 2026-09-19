@@ -25,7 +25,7 @@ function visibleApplications(user, { status, q } = {}) {
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   return db.prepare(`SELECT a.id, a.created_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
-                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.error, a.bases_user_id,
+                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
                        t.name AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email
                      FROM applications a JOIN teams t ON t.id = a.team_id JOIN cities c ON c.id = a.city_id
                      LEFT JOIN users bu ON bu.id = a.bases_user_id

@@ -32,6 +32,8 @@ function applicantEmail({ app, team, missing, notFoundInPco, tenureShort }) {
   } else if (missing.length) {
     parts.push(p('Para poder servir necesitas completar estos pasos:'));
     parts.push(`<ul style="line-height:1.7;margin:0 0 14px">${missing.map((m) => `<li><b>${COURSES[m].label}</b> — <a href="${esc(COURSES[m].url())}">${esc(COURSES[m].url())}</a></li>`).join('')}</ul>`);
+    const claimed = missing.filter((m) => app['self_' + m]);
+    if (claimed.length) parts.push(p(`Nos indicaste que ya tienes ${claimed.map((m) => COURSES[m].label).join(', ')}, pero no lo vemos registrado en nuestro sistema. Si es un error, díselo a quien te contacte y lo revisará.`));
     if (missing.includes('bases2')) parts.push(p('Un voluntario de Bases de tu ciudad se pondrá en contacto contigo para informarte y ayudarte a registrarte.'));
     parts.push(p('Cuando termines, el líder del equipo te llamará.'));
   } else {
