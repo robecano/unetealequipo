@@ -1,0 +1,18 @@
+{
+  "name": "unetealequipo",
+  "version": "1.0.0",
+  "description": "Únete al equipo: escaparate de equipos de Hillsong España y flujo de interesados en servir",
+  "main": "server.js",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node scripts/check.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "express": "^4.21.2",
+    "nodemailer": "^6.9.16"
+  }
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Únete al equipo · Hillsong España</title>
+<meta name="description" content="Descubre los equipos de Hillsong España y apúntate para servir.">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="nav">
+  <a class="brand" href="#top">Hillsong <span>España</span></a>
+  <nav><a href="#equipos">Equipos</a><a href="#como">Cómo funciona</a><a class="btn btn-sm" href="#apuntate">Apúntate</a></nav>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <p class="eyebrow">Servir es parte de la historia</p>
+    <h1>Encuentra tu lugar.<br><em>Sirve con propósito.</em></h1>
+    <p class="lead">Cada domingo ocurre gracias a personas como tú. Descubre los equipos de nuestra iglesia y da el primer paso.</p>
+    <div class="hero-cta"><a class="btn" href="#equipos">Ver equipos</a><a class="btn btn-ghost" href="#apuntate">Quiero servir</a></div>
+  </section>
+
+  <section id="equipos" class="section">
+    <div class="section-head">
+      <h2>Nuestros equipos</h2>
+      <input id="search" type="search" placeholder="Buscar equipo…" aria-label="Buscar equipo">
+    </div>
+    <div id="teams" class="grid" aria-live="polite"><p class="muted">Cargando equipos…</p></div>
+  </section>
+
+  <section id="como" class="section steps">
+    <h2>Cómo funciona</h2>
+    <ol>
+      <li><b>Apúntate</b><span>Cuéntanos quién eres y dónde te gustaría servir.</span></li>
+      <li><b>Bases 1 y 2</b><span>Comprobamos tu camino en la iglesia. Si falta algo, te ayudamos a completarlo.</span></li>
+      <li><b>Te llamamos</b><span>El líder del equipo te llama esa semana y te invita a visitarlo el domingo.</span></li>
+      <li><b>Ya eres del equipo</b><span>Una llamada de seguimiento después para consolidarlo. ¡Bienvenido!</span></li>
+    </ol>
+  </section>
+
+  <section id="apuntate" class="section form-section">
+    <div class="form-intro">
+      <h2>Apúntate para servir</h2>
+      <p class="muted">Solo necesitamos unos datos. Te escribiremos por email con los siguientes pasos.</p>
+    </div>
+    <form id="form" class="card form" novalidate>
+      <div class="row2">
+        <label>Nombre y apellidos<input name="name" autocomplete="name" required></label>
+        <label>Email<input name="email" type="email" autocomplete="email" required></label>
+      </div>
+      <div class="row2">
+        <label>Teléfono<input name="phone" type="tel" autocomplete="tel" required></label>
+        <label>Ciudad<select name="city_id" required></select></label>
+      </div>
+      <label>Equipo en el que te gustaría servir<select name="team_id" required></select></label>
+      <p id="team-notice" class="alert" hidden></p>
+      <label>¿Cuánto tiempo llevas en la iglesia?
+        <select name="tenure" required>
+          <option value="">Elige…</option>
+          <option value="0">Menos de 6 meses</option>
+          <option value="6">Entre 6 y 12 meses</option>
+          <option value="12">Entre 1 y 2 años</option>
+          <option value="24">Más de 2 años</option>
+        </select>
+      </label>
+      <fieldset>
+        <legend>Tu camino en la iglesia</legend>
+        <div class="yn"><span>¿Has hecho Bases 1?</span><label><input type="radio" name="bases1" value="si">Sí</label><label><input type="radio" name="bases1" value="no" checked>No</label></div>
+        <div class="yn"><span>¿Has hecho Bases 2?</span><label><input type="radio" name="bases2" value="si">Sí</label><label><input type="radio" name="bases2" value="no" checked>No</label></div>
+        <div class="yn"><span>¿Estás en un GC (Grupo de Conexión)?</span><label><input type="radio" name="gc" value="si">Sí</label><label><input type="radio" name="gc" value="no" checked>No</label></div>
+      </fieldset>
+      <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p id="error" class="error" role="alert" hidden></p>
+      <button class="btn" id="submit" type="submit">Enviar</button>
+    </form>
+    <div id="done" class="card done" hidden>
+      <div class="check" aria-hidden="true">✓</div>
+      <h3>¡Recibido!</h3>
+      <p>Te hemos enviado un email con los siguientes pasos. Revisa también la carpeta de spam.</p>
+      <button class="btn btn-ghost" id="again" type="button">Apuntar a otra persona</button>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">© Hillsong España · <a href="/panel">Acceso para líderes</a></footer>
+
+<dialog id="dlg">
+  <button class="close" id="dlg-close" aria-label="Cerrar">×</button>
+  <div id="dlg-body"></div>
+</dialog>
+<script src="/app.js"></script>
+</body>
+</html>
