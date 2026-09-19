@@ -7,6 +7,8 @@ const FOLLOWUP_DAYS = 7;
 const OPEN = ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'];
 
 const LABEL = { bases1: 'Bases 1', bases2: 'Bases 2', gc: 'GC' };
+const CLAIM = { bases1: 'haber hecho Bases 1', bases2: 'haber hecho Bases 2', gc: 'tener un GC' };
+const joinEs = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} y ${a.at(-1)}`);
 const now = () => new Date().toISOString();
 const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString();
 
@@ -33,6 +35,17 @@ function pickBasesVolunteer(cityId) {
 
 const forTemplate = (a, pcoUrl) => ({ name: a.name, email: a.email, phone: a.phone, city: a.city, pco_url: pcoUrl });
 
+/** Notas para el perfil de PCO: siempre el interés en servir y, si dice tener algo que no consta, otra nota aparte. */
+function noteTexts(a) {
+  const date = a.created_at.slice(0, 10);
+  const texts = [`Interesado en servir en ${a.team_name} (${a.city}) · solicitud web ${date}`];
+  const claimed = Object.keys(CLAIM).filter((k) => a['self_' + k] && !a['pco_' + k]);
+  if (claimed.length) {
+    texts.push(`La persona dice ${joinEs(claimed.map((k) => CLAIM[k]))}, pero no consta en Planning Center. Se acepta lo indicado en el formulario web (${date}).`);
+  }
+  return texts;
+}
+
 function createFlow({ pco, mail }) {
   const safeMail = async (id, label, msg, to) => {
     try {
@@ -44,6 +57,22 @@ function createFlow({ pco, mail }) {
     }
   };
   const alertAdmin = (id, subject, detail) => safeMail(id, `aviso admin: ${subject}`, emails.adminAlertEmail(subject, detail), config.adminNotifyEmail);
+
+  /** Escribe las notas pendientes; si una falla, se reanuda por la que faltaba sin duplicar las anteriores. */
+  async function writeNotes(id) {
+    const a = fullApp(id);
+    if (!a?.pco_person_id) return;
+    const texts = noteTexts(a);
+    try {
+      for (let i = a.notes_done; i < texts.length; i++) {
+        await pco.addNote(a.pco_person_id, texts[i], config.noteCategoryName);
+        db.prepare('UPDATE applications SET notes_done=? WHERE id=?').run(i + 1, id);
+      }
+      db.prepare('UPDATE applications SET note_synced=1 WHERE id=?').run(id);
+    } catch (e) {
+      logEvent(id, null, 'nota_error', e.message);
+    }
+  }
 
   async function markReady(id) {
     const a = fullApp(id);
@@ -104,12 +133,7 @@ function createFlow({ pco, mail }) {
     });
     logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
 
-    try {
-      await pco.addNote(person.id, `Interesado en servir en ${a.team_name} (${a.city}) · solicitud web ${now().slice(0, 10)}${unverifiedKeys.length ? ` · Declara haber hecho ${unverifiedKeys.map((k) => LABEL[k]).join(', ')} (no consta en PCO)` : ''}`, config.noteCategoryName);
-      db.prepare('UPDATE applications SET note_synced=1 WHERE id=?').run(id);
-    } catch (e) {
-      logEvent(id, null, 'nota_error', e.message);
-    }
+    await writeNotes(id);
 
     await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: a, team, missing }), a.email);
 
@@ -156,16 +180,8 @@ function createFlow({ pco, mail }) {
   }
 
   async function retryNotes() {
-    const rows = db.prepare('SELECT id, pco_person_id FROM applications WHERE note_synced=0 AND pco_person_id IS NOT NULL LIMIT 20').all();
-    for (const r of rows) {
-      const a = fullApp(r.id);
-      try {
-        await pco.addNote(r.pco_person_id, `Interesado en servir en ${a.team_name} (${a.city}) · solicitud web ${a.created_at.slice(0, 10)}`, config.noteCategoryName);
-        db.prepare('UPDATE applications SET note_synced=1 WHERE id=?').run(r.id);
-      } catch (e) {
-        logEvent(r.id, null, 'nota_error', e.message);
-      }
-    }
+    const rows = db.prepare('SELECT id FROM applications WHERE note_synced=0 AND pco_person_id IS NOT NULL LIMIT 20').all();
+    for (const r of rows) await writeNotes(r.id);
   }
 
   /** Resumen semanal a líderes y voluntarios de Bases. Devuelve cuántos emails se enviaron. */

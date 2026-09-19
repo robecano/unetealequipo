@@ -133,7 +133,9 @@ test('si dijo Sí y en PCO no consta: se cree el formulario, se avisa al líder 
   const html = to('lider@test.es')[0].html;
   assert.match(html, /Dato sin verificar/);
   assert.match(html, /Bases 2/);
-  assert.match(notes.at(-1)[1], /Declara haber hecho Bases 2 \(no consta en PCO\)/);
+  assert.equal(notes.length, 2);
+  assert.match(notes[0][1], /^Interesado en servir en AV/);
+  assert.match(notes[1][1], /^La persona dice haber hecho Bases 2, pero no consta en Planning Center/);
   const row = db.prepare('SELECT bases_user_id, pco_bases2, self_bases2 FROM applications WHERE id=?').get(id);
   assert.equal(row.bases_user_id, null);
   assert.equal(row.pco_bases2, 0);
@@ -144,4 +146,31 @@ test('si dijo No y en PCO no consta: sigue el camino de Bases (sin cambios)', as
   const id = apply(av);
   assert.equal(await flow.process(id), 'pendiente_bases');
   assert.equal(to('lider@test.es').length, 0);
+});
+
+test('varias cosas declaradas sin constar: una sola nota con todo, redactada en español', async () => {
+  reset(); person = { id: '59' }; course = { bases1: false, bases2: false, gc: false };
+  const id = apply(av);
+  db.prepare('UPDATE applications SET self_bases1=1, self_bases2=1, self_gc=1 WHERE id=?').run(id);
+  await flow.process(id);
+  assert.match(notes[1][1], /La persona dice haber hecho Bases 1, haber hecho Bases 2 y tener un GC, pero no consta/);
+});
+
+test('si falla la segunda nota, el reintento escribe solo la que faltaba', async () => {
+  const written = []; let fail = true;
+  const f = createFlow({
+    pco: { findPerson: async () => ({ id: '60' }), getCourseStatus: async () => ({ bases1: true, bases2: false, gc: true }),
+      addNote: async (id, t) => { if (t.startsWith('La persona dice') && fail) throw new Error('PCO 500'); written.push(t); } },
+    mail: { sendMail: async () => {} },
+  });
+  const id = apply(av);
+  db.prepare('UPDATE applications SET self_bases2=1 WHERE id=?').run(id);
+  await f.process(id);
+  assert.equal(written.length, 1);
+  assert.equal(db.prepare('SELECT note_synced n FROM applications WHERE id=?').get(id).n, 0);
+  fail = false;
+  await f.retryNotes();
+  assert.equal(written.length, 2);
+  assert.match(written[1], /^La persona dice/);
+  assert.equal(db.prepare('SELECT note_synced n FROM applications WHERE id=?').get(id).n, 1);
 });
