@@ -34,7 +34,7 @@ function renderTeams() {
 
 function openTeam(team) {
   $('#dlg-body').replaceChildren(
-    h('div', { class: 'dlg-icon' }, team.icon || ''),
+    team.image_url ? h('img', { class: 'dlg-img', src: team.image_url, alt: '' }) : h('div', { class: 'dlg-icon' }, team.icon || ''),
     h('h3', {}, team.name),
     h('p', {}, team.description),
     team.notice ? h('p', { class: 'alert' }, team.notice) : null,

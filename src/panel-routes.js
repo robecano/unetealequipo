@@ -1,10 +1,23 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 const { db, tx, logEvent } = require('./db');
 const { requireAuth, requireAdmin } = require('./auth');
+const config = require('./config');
 const { fullApp, inDays, now, FOLLOWUP_DAYS } = require('./flow');
 
 const STATUSES = ['recibida', 'no_apto_aun', 'sin_pco', 'pendiente_bases', 'listo', 'contactado', 'visito', 'confirmado', 'no_continua'];
 const BASES_STATUSES = ['sin_contactar', 'contactado', 'registrado'];
+// Imágenes permitidas: se comprueba la firma real del archivo, no solo lo que declara el navegador. SVG queda fuera a propósito.
+const IMAGE_TYPES = {
+  'image/png': { ext: 'png', ok: (b) => b.length > 8 && b.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) },
+  'image/jpeg': { ext: 'jpg', ok: (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  'image/webp': { ext: 'webp', ok: (b) => b.length > 12 && b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP' },
+};
+const validImageUrl = (u) => u === '' || /^https:\/\//.test(u) || /^\/uploads\/[\w.-]+$/.test(u);
+const firstChars = (v, n) => [...str(v, 60)].slice(0, n).join('');
+
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
 const str = (v, max = 300) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -103,17 +116,30 @@ module.exports = function panelRoutes({ flow, pco }) {
     res.json({ ok: true });
   });
 
+  /** Subida de imagen de equipo: el cuerpo es el archivo tal cual. Devuelve la URL para guardarla con el equipo. */
+  admin.post('/images', express.raw({ type: Object.keys(IMAGE_TYPES), limit: '3mb' }), (req, res) => {
+    const spec = IMAGE_TYPES[String(req.headers['content-type'] || '').split(';')[0]];
+    if (!spec || !Buffer.isBuffer(req.body) || !req.body.length) throw bad('Usa una imagen PNG, JPG o WebP');
+    if (!spec.ok(req.body)) throw bad('El archivo no es una imagen válida');
+    fs.mkdirSync(config.uploadsDir, { recursive: true });
+    const name = `team-${crypto.randomBytes(8).toString('hex')}.${spec.ext}`;
+    fs.writeFileSync(path.join(config.uploadsDir, name), req.body);
+    res.json({ url: `/uploads/${name}` });
+  });
+
   admin.get('/teams', (_req, res) => res.json(db.prepare('SELECT * FROM teams ORDER BY sort, name').all()));
-  const teamFields = (b) => [str(b.name, 80), str(b.description, 1200), str(b.icon, 8), str(b.image_url, 500), Math.max(0, parseInt(b.min_months, 10) || 0), str(b.notice, 600), flag(b.active ?? 1), parseInt(b.sort, 10) || 0];
+  const teamFields = (b) => [str(b.name, 80), str(b.description, 1200), firstChars(b.icon, 6), str(b.image_url, 500), Math.max(0, parseInt(b.min_months, 10) || 0), str(b.notice, 600), flag(b.active ?? 1), parseInt(b.sort, 10) || 0];
   admin.post('/teams', (req, res) => {
     const f = teamFields(req.body || {});
     if (!f[0]) throw bad('Falta el nombre');
+    if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
     try { res.json({ id: Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort) VALUES (?,?,?,?,?,?,?,?)').run(...f).lastInsertRowid) }); }
     catch { throw bad('Ese equipo ya existe'); }
   });
   admin.put('/teams/:id', (req, res) => {
     const f = teamFields(req.body || {});
     if (!f[0]) throw bad('Falta el nombre');
+    if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
     db.prepare('UPDATE teams SET name=?,description=?,icon=?,image_url=?,min_months=?,notice=?,active=?,sort=? WHERE id=?').run(...f, Number(req.params.id));
     res.json({ ok: true });
   });

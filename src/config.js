@@ -22,6 +22,8 @@ const config = {
   appUrl: (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, ''),
   sessionSecret: process.env.SESSION_SECRET || '',
   dbPath: process.env.DB_PATH ? path.resolve(root, process.env.DB_PATH) : path.join(root, 'data', 'app.db'),
+  // Imágenes de los equipos: junto a la base de datos, así se conservan entre despliegues (volumen /app/data)
+  uploadsDir: path.join(path.dirname(process.env.DB_PATH ? path.resolve(root, process.env.DB_PATH) : path.join(root, 'data', 'app.db')), 'uploads'),
   panelPassword: process.env.PANEL_PASSWORD || '',
   adminEmail: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || '',

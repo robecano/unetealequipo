@@ -83,6 +83,43 @@ async function applicationsView(box) {
 }
 
 // ---------- Administración ----------
+
+const EMOJIS = ['🎶', '🎤', '🎸', '🥁', '🎛️', '💡', '🎥', '📸', '🤝', '☕', '🧒', '👶', '💛', '🙏', '📖', '🚗', '🧹', '🍽️', '🎨', '📣'];
+
+/** Emoji o imagen del equipo, con vista previa. Si hay imagen se muestra la imagen; si no, el emoji. */
+function media(t) {
+  const preview = h('div', { class: 'team-preview' });
+  const icon = h('input', { name: 'icon', value: t.icon || '', placeholder: '🎶', maxlength: '12' });
+  const image = h('input', { name: 'image_url', value: t.image_url || '', placeholder: 'https://… o sube una imagen' });
+  const status = h('span', { class: 'muted' });
+  const draw = () => preview.replaceChildren(image.value.trim() ? h('img', { src: image.value.trim(), alt: '' }) : h('span', { class: 'icon' }, icon.value.trim() || '🙂'));
+  icon.addEventListener('input', draw);
+  image.addEventListener('input', draw);
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', onchange: async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    status.textContent = 'Subiendo…';
+    try {
+      const res = await fetch('/api/panel/admin/images', { method: 'POST', headers: { 'Content-Type': f.type }, body: f });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || 'No se pudo subir');
+      image.value = out.url;
+      status.textContent = 'Imagen subida. Pulsa Guardar.';
+      draw();
+    } catch (ex) { status.textContent = ex.message; }
+    e.target.value = '';
+  } });
+  draw();
+  return h('div', { class: 'media card' },
+    preview,
+    h('div', { class: 'stack' },
+      h('label', {}, 'Emoji del equipo', icon),
+      h('div', { class: 'emojis' }, EMOJIS.map((em) => h('button', { type: 'button', class: 'mini', onclick: () => { icon.value = em; draw(); } }, em))),
+      h('label', {}, 'Imagen (opcional, PNG, JPG o WebP, máx. 3 MB)', file, image),
+      h('button', { type: 'button', class: 'mini', onclick: () => { image.value = ''; status.textContent = 'Imagen quitada. Pulsa Guardar.'; draw(); } }, 'Quitar imagen'),
+      status));
+}
+
 async function teamsView(box) {
   const teams = await api('/panel/admin/teams');
   const editor = h('div');
@@ -98,15 +135,15 @@ async function teamsView(box) {
       h('h3', {}, t.id ? `Editar ${t.name}` : 'Nuevo equipo'),
       f('name', 'Nombre'),
       h('label', {}, 'Descripción breve', h('textarea', { name: 'description', rows: 3 }, t.description || '')),
-      h('div', { class: 'row2' }, f('icon', 'Emoji (icono)'), f('sort', 'Orden', 'number')),
-      f('image_url', 'URL de imagen (opcional, https)'),
+      media(t),
+      f('sort', 'Orden', 'number'),
       f('min_months', 'Meses mínimos en la iglesia (0 = sin mínimo)', 'number'),
       h('label', {}, 'Aviso para quien se apunta (p. ej. entrevista previa)', h('textarea', { name: 'notice', rows: 2 }, t.notice || '')),
       h('label', { class: 'checks' }, h('input', { type: 'checkbox', name: 'active', checked: t.active !== 0 }), 'Visible en la web'),
       h('div', { class: 'acts' }, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Guardar'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editor.replaceChildren() }, 'Cancelar'))));
   };
   box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Nuevo equipo')), editor,
-    h('div', { class: 'card' }, teams.length ? teams.map((t) => h('div', { class: 'li' }, h('div', {}, `${t.icon} `, h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null), h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'))) : h('p', { class: 'muted' }, 'Aún no hay equipos.')));
+    h('div', { class: 'card' }, teams.length ? teams.map((t) => h('div', { class: 'li' }, h('div', {}, t.image_url ? h('img', { class: 'thumb', src: t.image_url, alt: '' }) : `${t.icon} `, h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null), h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'))) : h('p', { class: 'muted' }, 'Aún no hay equipos.')));
 }
 
 async function citiesView(box) {

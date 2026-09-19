@@ -1,4 +1,5 @@
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const config = require('./src/config');
 const { db, logEvent } = require('./src/db');
@@ -113,9 +114,12 @@ app.use('/api/panel', require('./src/panel-routes')({ flow, pco }));
 
 // ---------- Estático ----------
 
+fs.mkdirSync(config.uploadsDir, { recursive: true });
+app.use('/uploads', express.static(config.uploadsDir, { maxAge: '30d', immutable: true }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 app.use('/api', (_req, res) => res.status(404).json({ error: 'No encontrado' }));
 app.use((err, _req, res, _next) => {
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'La imagen es demasiado grande (máximo 3 MB)' });
   if (!err.status || err.status >= 500) console.error(err);
   res.status(err.status || 500).json({ error: err.status && err.status < 500 ? err.message : 'Error interno' });
 });
