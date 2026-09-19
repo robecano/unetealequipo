@@ -125,11 +125,23 @@ test('error de PCO: la solicitud queda "recibida" para reintentar', async () => 
   assert.equal(sent.length, 0);
 });
 
-test('si dijo Sí pero no consta en PCO: el email lo menciona y el panel lo guarda', async () => {
+test('si dijo Sí y en PCO no consta: se cree el formulario, se avisa al líder y se marca sin verificar', async () => {
   reset(); person = { id: '57', url: 'https://pco/57' }; course = { bases1: true, bases2: false, gc: true };
   const id = apply(av);
   db.prepare('UPDATE applications SET self_bases2 = 1 WHERE id = ?').run(id);
-  await flow.process(id);
-  assert.match(to('ana@x.es')[0].html, /Nos indicaste que ya tienes Bases 2/);
-  assert.equal(db.prepare('SELECT self_bases2 s, pco_bases2 p FROM applications WHERE id=?').get(id).s, 1);
+  assert.equal(await flow.process(id), 'listo');
+  const html = to('lider@test.es')[0].html;
+  assert.match(html, /Dato sin verificar/);
+  assert.match(html, /Bases 2/);
+  assert.match(notes.at(-1)[1], /Declara haber hecho Bases 2 \(no consta en PCO\)/);
+  const row = db.prepare('SELECT bases_user_id, pco_bases2, self_bases2 FROM applications WHERE id=?').get(id);
+  assert.equal(row.bases_user_id, null);
+  assert.equal(row.pco_bases2, 0);
+});
+
+test('si dijo No y en PCO no consta: sigue el camino de Bases (sin cambios)', async () => {
+  reset(); person = { id: '58' }; course = { bases1: true, bases2: false, gc: true };
+  const id = apply(av);
+  assert.equal(await flow.process(id), 'pendiente_bases');
+  assert.equal(to('lider@test.es').length, 0);
 });

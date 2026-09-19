@@ -32,8 +32,6 @@ function applicantEmail({ app, team, missing, notFoundInPco, tenureShort }) {
   } else if (missing.length) {
     parts.push(p('Para poder servir necesitas completar estos pasos:'));
     parts.push(`<ul style="line-height:1.7;margin:0 0 14px">${missing.map((m) => `<li><b>${COURSES[m].label}</b> — <a href="${esc(COURSES[m].url())}">${esc(COURSES[m].url())}</a></li>`).join('')}</ul>`);
-    const claimed = missing.filter((m) => app['self_' + m]);
-    if (claimed.length) parts.push(p(`Nos indicaste que ya tienes ${claimed.map((m) => COURSES[m].label).join(', ')}, pero no lo vemos registrado en nuestro sistema. Si es un error, díselo a quien te contacte y lo revisará.`));
     if (missing.includes('bases2')) parts.push(p('Un voluntario de Bases de tu ciudad se pondrá en contacto contigo para informarte y ayudarte a registrarte.'));
     parts.push(p('Cuando termines, el líder del equipo te llamará.'));
   } else {
@@ -48,9 +46,10 @@ const person = (a) =>
 const list = (items) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px">${items.map((a) => `<li>${person(a)}</li>`).join('')}</ul>`;
 
 /** Aviso inmediato al líder por una persona lista para llamar. */
-function leaderReadyEmail({ app, team }) {
+function leaderReadyEmail({ app, team, unverified = [] }) {
   const html = layout(`Nueva persona para tu equipo: ${team.name}`,
     p(`Esta persona ha hecho Bases 2 y quiere servir en <b>${esc(team.name)}</b>:`) + list([app]) +
+    (unverified.length ? p(`⚠ <b>Dato sin verificar:</b> dice haber hecho ${esc(unverified.join(', '))}, pero no consta en Planning Center. Confírmalo al llamarla.`) : '') +
     p('<b>Qué debes hacer:</b> llámala <b>esta semana</b> e invítala a visitar el equipo <b>este domingo</b>. La semana siguiente haz una llamada de seguimiento para consolidar que ya es parte del equipo.') +
     btn(`${config.appUrl}/panel`, 'Abrir mi panel'));
   return { subject: `Para llamar esta semana: ${app.name} (${team.name})`, html, text: `${app.name} ${app.phone} quiere servir en ${team.name}` };

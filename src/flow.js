@@ -6,6 +6,7 @@ const BLOCKING = ['bases1', 'bases2']; // sin estos dos no se avisa al líder; G
 const FOLLOWUP_DAYS = 7;
 const OPEN = ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'];
 
+const LABEL = { bases1: 'Bases 1', bases2: 'Bases 2', gc: 'GC' };
 const now = () => new Date().toISOString();
 const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString();
 
@@ -50,7 +51,9 @@ function createFlow({ pco, mail }) {
     logEvent(id, null, 'listo', 'Tiene Bases 2: pendiente de llamada del líder');
     const leaders = leadersFor(a.team_id, a.city_id);
     if (!leaders.length) return alertAdmin(id, `Sin líder para ${a.team_name} en ${a.city}`, `${a.name} (${a.phone}) quiere servir en ${a.team_name} en ${a.city} y no hay ningún líder asignado.`);
-    const msg = emails.leaderReadyEmail({ app: forTemplate(a), team: { name: a.team_name } });
+    // Cursos que la persona dice tener y que no constan en Planning Center: se aceptan, pero el líder debe confirmarlos al llamar
+    const unverified = Object.keys(LABEL).filter((k) => a['self_' + k] && !a['pco_' + k]).map((k) => LABEL[k]);
+    const msg = emails.leaderReadyEmail({ app: forTemplate(a), team: { name: a.team_name }, unverified });
     return safeMail(id, 'aviso al líder', msg, leaders.map((l) => l.email));
   }
 
@@ -88,7 +91,10 @@ function createFlow({ pco, mail }) {
       return 'sin_pco';
     }
 
-    const missing = ['bases1', 'bases2', 'gc'].filter((k) => !course[k]);
+    // Si la persona dice que sí y en Planning Center no consta, se cree el formulario
+    const declared = { bases1: !!a.self_bases1, bases2: !!a.self_bases2, gc: !!a.self_gc };
+    const unverifiedKeys = Object.keys(LABEL).filter((k) => !course[k] && declared[k]);
+    const missing = Object.keys(LABEL).filter((k) => !course[k] && !declared[k]);
     const blocked = missing.filter((k) => BLOCKING.includes(k));
     setStatus(blocked.length ? 'pendiente_bases' : 'recibida', {
       pco_person_id: person.id,
@@ -96,10 +102,10 @@ function createFlow({ pco, mail }) {
       pco_bases2: +course.bases2,
       pco_gc: +course.gc,
     });
-    logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}`);
+    logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
 
     try {
-      await pco.addNote(person.id, `Interesado en servir en ${a.team_name} (${a.city}) · solicitud web ${now().slice(0, 10)}`, config.noteCategoryName);
+      await pco.addNote(person.id, `Interesado en servir en ${a.team_name} (${a.city}) · solicitud web ${now().slice(0, 10)}${unverifiedKeys.length ? ` · Declara haber hecho ${unverifiedKeys.map((k) => LABEL[k]).join(', ')} (no consta en PCO)` : ''}`, config.noteCategoryName);
       db.prepare('UPDATE applications SET note_synced=1 WHERE id=?').run(id);
     } catch (e) {
       logEvent(id, null, 'nota_error', e.message);
@@ -132,13 +138,13 @@ function createFlow({ pco, mail }) {
 
   /** Vuelve a mirar en Planning Center a los pendientes: si ya tienen Bases 2, se avisa al líder. */
   async function recheckPending() {
-    const rows = db.prepare("SELECT id, pco_person_id FROM applications WHERE status='pendiente_bases' AND pco_person_id IS NOT NULL").all();
+    const rows = db.prepare("SELECT id, pco_person_id, self_bases1, self_bases2 FROM applications WHERE status='pendiente_bases' AND pco_person_id IS NOT NULL").all();
     let promoted = 0;
     for (const r of rows) {
       try {
         const c = await pco.getCourseStatus(r.pco_person_id, { fields: config.fields, required: config.required });
         db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, r.id);
-        if (BLOCKING.every((k) => c[k])) {
+        if (BLOCKING.every((k) => c[k] || r['self_' + k])) {
           await markReady(r.id);
           promoted++;
         }
