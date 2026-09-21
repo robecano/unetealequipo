@@ -134,3 +134,12 @@ test('CSV: las fechas salen en hora de España y formato dd/mm/aaaa hh:mm', asyn
   assert.equal(line[line.length - 2], '08/07/2026');
   assert.equal(line[line.length - 1], '15/01/2026 10:05', 'invierno: UTC+1');
 });
+
+test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el panel)', async () => {
+  const id = apply('Orden Cursos', teamA);
+  db.prepare('UPDATE applications SET pco_bases1 = 1, pco_gc = 0, pco_bases2 = 1, self_bases1 = 1, self_gc = 0, self_bases2 = 1 WHERE id = ?').run(id);
+  const [head, row] = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Orden')).text()).replace(/^\ufeff/, '').trim().split('\r\n');
+  const h = head.split(';'); const v = row.split(';');
+  assert.deepEqual(h.slice(9, 15), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)']);
+  assert.deepEqual(v.slice(9, 15), ['Sí', 'No', 'Sí', 'Sí', 'No', 'Sí']);
+});

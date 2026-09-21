@@ -75,10 +75,10 @@ function csvCell(v) {
 
 function applicationsCsv(rows) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
-    'Bases 1 (PCO)', 'Bases 2 (PCO)', 'GC (PCO)', 'Bases 1 (dijo)', 'Bases 2 (dijo)', 'GC (dijo)', 'Ficha Planning Center',
+    'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
     'Voluntario Bases', 'Email voluntario', 'Teléfono voluntario', 'Estado en Bases', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
-    yn(a.pco_bases1), yn(a.pco_bases2), yn(a.pco_gc), yn(a.self_bases1), yn(a.self_bases2), yn(a.self_gc),
+    yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
     a.bases_name, a.bases_email, a.bases_phone, a.bases_user_id ? String(a.bases_status).replace('_', ' ') : '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
