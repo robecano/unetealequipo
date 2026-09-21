@@ -122,9 +122,16 @@ function media(t) {
 
 async function teamsView(box) {
   const teams = await api('/panel/admin/teams');
+  const areas = teams.filter((t) => !t.parent_id);
+  const subsOf = (id) => teams.filter((t) => t.parent_id === id);
   const editor = h('div');
   const edit = (t = {}) => {
     const f = (name, label, type = 'text') => h('label', {}, label, h('input', { name, type, value: t[name] ?? '' }));
+    const parent = h('select', { name: 'parent_id' }, h('option', { value: '' }, '— Es un área (aparece como tarjeta en la web) —'),
+      ...areas.filter((a) => a.id !== t.id).map((a) => h('option', { value: a.id, selected: a.id === t.parent_id }, `Subequipo de: ${a.name}`)));
+    const mediaBox = h('div', {}, media(t));
+    const sync = () => { mediaBox.hidden = !!parent.value; };
+    parent.addEventListener('change', sync);
     editor.replaceChildren(h('form', { class: 'card form', onsubmit: guard(async (e) => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target).entries());
@@ -133,17 +140,24 @@ async function teamsView(box) {
       teamsView(box);
     }) },
       h('h3', {}, t.id ? `Editar ${t.name}` : 'Nuevo equipo'),
+      h('label', {}, 'Tipo', parent),
       f('name', 'Nombre'),
       h('label', {}, 'Descripción breve', h('textarea', { name: 'description', rows: 3 }, t.description || '')),
-      media(t),
+      mediaBox,
       f('sort', 'Orden', 'number'),
       f('min_months', 'Meses mínimos en la iglesia (0 = sin mínimo)', 'number'),
       h('label', {}, 'Aviso para quien se apunta (p. ej. entrevista previa)', h('textarea', { name: 'notice', rows: 2 }, t.notice || '')),
       h('label', { class: 'checks' }, h('input', { type: 'checkbox', name: 'active', checked: t.active !== 0 }), 'Visible en la web'),
       h('div', { class: 'acts' }, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Guardar'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editor.replaceChildren() }, 'Cancelar'))));
+    sync();
+    editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
-  box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Nuevo equipo')), editor,
-    h('div', { class: 'card' }, teams.length ? teams.map((t) => h('div', { class: 'li' }, h('div', {}, t.image_url ? h('img', { class: 'thumb', src: t.image_url, alt: '' }) : `${t.icon} `, h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null), h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'))) : h('p', { class: 'muted' }, 'Aún no hay equipos.')));
+  const row = (t, sub) => h('div', { class: `li${sub ? ' li-sub' : ''}` },
+    h('div', {}, t.image_url ? h('img', { class: 'thumb', src: t.image_url, alt: '' }) : (t.icon ? `${t.icon} ` : ''), h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null),
+    h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'));
+  box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Nuevo equipo o área'), h('span', { class: 'muted' }, `${areas.length} áreas · ${teams.length - areas.length} subequipos`)), editor,
+    ...(areas.length ? areas.map((a) => h('div', { class: 'card group' }, row(a, false), subsOf(a.id).map((t) => row(t, true)),
+      h('button', { class: 'mini add-sub', onclick: () => edit({ parent_id: a.id }) }, `+ Subequipo en ${a.name}`))) : [h('p', { class: 'muted' }, 'Aún no hay equipos.')]));
 }
 
 async function citiesView(box) {
@@ -156,10 +170,12 @@ async function citiesView(box) {
 async function usersView(box) {
   const [users, cities, teams] = await Promise.all([api('/panel/admin/users'), api('/panel/admin/cities'), api('/panel/admin/teams')]);
   const editor = h('div');
+  // Un líder se asigna a subequipos (o a un área sin subequipos), no a las áreas que los agrupan
+  const selectable = teams.filter((t) => t.parent_id || !teams.some((c) => c.parent_id === t.id)).map((t) => ({ id: t.id, name: t.parent_name && t.parent_name !== t.name ? `${t.parent_name} › ${t.name}` : t.name }));
   const checks = (name, items, selected) => h('div', { class: 'checks' }, items.map((i) => h('label', {}, h('input', { type: 'checkbox', name, value: i.id, checked: selected.includes(i.id) }), i.name)));
   const edit = (u = { role: 'leader', city_ids: [], team_ids: [], active: 1 }) => {
     const roleSel = h('select', { name: 'role', disabled: !!u.id }, ['leader', 'bases'].map((r) => h('option', { value: r, selected: u.role === r }, ROLE[r])));
-    const teamBox = h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', teams, u.team_ids));
+    const teamBox = h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', selectable, u.team_ids));
     const syncRole = () => { teamBox.hidden = roleSel.value !== 'leader'; };
     roleSel.addEventListener('change', syncRole);
     editor.replaceChildren(h('form', { class: 'card form', onsubmit: guard(async (e) => {
@@ -179,7 +195,7 @@ async function usersView(box) {
     syncRole();
   };
   const cityName = (id) => cities.find((c) => c.id === id)?.name;
-  const teamName = (id) => teams.find((t) => t.id === id)?.name;
+  const teamName = (id) => selectable.find((t) => t.id === id)?.name;
   box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Añadir líder o voluntario de Bases')), editor,
     h('div', { class: 'card' }, users.filter((u) => u.role !== 'admin').map((u) => h('div', { class: 'li' },
       h('div', {}, h('b', {}, u.name || u.email), u.active ? '' : ' (inactivo)', h('div', { class: 'muted' }, `${ROLE[u.role]} · ${u.email}`), h('div', { class: 'muted' }, [u.city_ids.map(cityName).join(', '), u.role === 'leader' ? u.team_ids.map(teamName).join(', ') : ''].filter(Boolean).join(' — '))),

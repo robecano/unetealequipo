@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { db, tx, logEvent } = require('./db');
 const { requireAuth, requireAdmin } = require('./auth');
 const config = require('./config');
+const { TEAM_LABEL } = require('./teams');
 const { fullApp, inDays, now, FOLLOWUP_DAYS } = require('./flow');
 
 const STATUSES = ['recibida', 'no_apto_aun', 'sin_pco', 'pendiente_bases', 'listo', 'contactado', 'visito', 'confirmado', 'no_continua'];
@@ -15,7 +16,7 @@ const IMAGE_TYPES = {
   'image/jpeg': { ext: 'jpg', ok: (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   'image/webp': { ext: 'webp', ok: (b) => b.length > 12 && b.subarray(0, 4).toString() === 'RIFF' && b.subarray(8, 12).toString() === 'WEBP' },
 };
-const validImageUrl = (u) => u === '' || /^https:\/\//.test(u) || /^\/uploads\/[\w.-]+$/.test(u);
+const validImageUrl = (u) => u === '' || /^https:\/\//.test(u) || /^\/(uploads|img\/areas)\/[\w.-]+$/.test(u);
 const firstChars = (v, n) => [...str(v, 60)].slice(0, n).join('');
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -39,8 +40,8 @@ function visibleApplications(user, { status, q } = {}) {
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   return db.prepare(`SELECT a.id, a.created_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
-                       t.name AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email
-                     FROM applications a JOIN teams t ON t.id = a.team_id JOIN cities c ON c.id = a.city_id
+                       ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email
+                     FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      LEFT JOIN users bu ON bu.id = a.bases_user_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT 500`).all(...params);
 }
@@ -127,20 +128,37 @@ module.exports = function panelRoutes({ flow, pco }) {
     res.json({ url: `/uploads/${name}` });
   });
 
-  admin.get('/teams', (_req, res) => res.json(db.prepare('SELECT * FROM teams ORDER BY sort, name').all()));
+  admin.get('/teams', (_req, res) =>
+    res.json(db.prepare('SELECT t.*, p.name AS parent_name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id ORDER BY COALESCE(p.sort, t.sort), COALESCE(p.name, t.name), t.parent_id IS NOT NULL, t.sort, t.name').all()));
+
   const teamFields = (b) => [str(b.name, 80), str(b.description, 1200), firstChars(b.icon, 6), str(b.image_url, 500), Math.max(0, parseInt(b.min_months, 10) || 0), str(b.notice, 600), flag(b.active ?? 1), parseInt(b.sort, 10) || 0];
+  /** parent_id: vacío = es un área (tarjeta). Solo puede colgar de un área, nunca de un subequipo ni de sí mismo. */
+  function parentOf(b, selfId) {
+    if (b.parent_id === undefined || b.parent_id === null || b.parent_id === '') return null;
+    const pid = Number(b.parent_id);
+    const area = db.prepare('SELECT id FROM teams WHERE id = ? AND parent_id IS NULL').get(pid);
+    if (!area || pid === selfId) throw bad('El área elegida no es válida');
+    if (selfId && db.prepare('SELECT 1 FROM teams WHERE parent_id = ?').get(selfId)) throw bad('Un área con subequipos no puede colgar de otra');
+    return pid;
+  }
   admin.post('/teams', (req, res) => {
-    const f = teamFields(req.body || {});
+    const b = req.body || {};
+    const f = teamFields(b);
     if (!f[0]) throw bad('Falta el nombre');
     if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
-    try { res.json({ id: Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort) VALUES (?,?,?,?,?,?,?,?)').run(...f).lastInsertRowid) }); }
-    catch { throw bad('Ese equipo ya existe'); }
+    const parent = parentOf(b, null);
+    try { res.json({ id: Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort,parent_id) VALUES (?,?,?,?,?,?,?,?,?)').run(...f, parent).lastInsertRowid) }); }
+    catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
   });
   admin.put('/teams/:id', (req, res) => {
-    const f = teamFields(req.body || {});
+    const b = req.body || {};
+    const id = Number(req.params.id);
+    const f = teamFields(b);
     if (!f[0]) throw bad('Falta el nombre');
     if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
-    db.prepare('UPDATE teams SET name=?,description=?,icon=?,image_url=?,min_months=?,notice=?,active=?,sort=? WHERE id=?').run(...f, Number(req.params.id));
+    const parent = parentOf(b, id);
+    try { db.prepare('UPDATE teams SET name=?,description=?,icon=?,image_url=?,min_months=?,notice=?,active=?,sort=?,parent_id=? WHERE id=?').run(...f, parent, id); }
+    catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
     res.json({ ok: true });
   });
 

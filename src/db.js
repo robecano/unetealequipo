@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS cities (
 );
 CREATE TABLE IF NOT EXISTS teams (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE,
+  parent_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   icon TEXT NOT NULL DEFAULT '',
   image_url TEXT NOT NULL DEFAULT '',
@@ -79,6 +80,33 @@ CREATE TABLE IF NOT EXISTS application_events (
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 `);
+
+
+// Migración: las bases anteriores tenían teams sin parent_id y con nombre único global.
+// Un área («Kids») y un subequipo («Kids») pueden llamarse igual, así que se reconstruye la tabla.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('teams') WHERE name = 'parent_id'").get()) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`BEGIN;
+    CREATE TABLE teams_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parent_id INTEGER REFERENCES teams_new(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      icon TEXT NOT NULL DEFAULT '',
+      image_url TEXT NOT NULL DEFAULT '',
+      min_months INTEGER NOT NULL DEFAULT 0,
+      notice TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      sort INTEGER NOT NULL DEFAULT 0
+    );
+    INSERT INTO teams_new (id, name, description, icon, image_url, min_months, notice, active, sort)
+      SELECT id, name, description, icon, image_url, min_months, notice, active, sort FROM teams;
+    DROP TABLE teams;
+    ALTER TABLE teams_new RENAME TO teams;
+    COMMIT;`);
+  db.exec('PRAGMA foreign_keys = ON');
+}
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_team_name ON teams (COALESCE(parent_id, 0), name)');
 
 try { db.exec('ALTER TABLE applications ADD COLUMN notes_done INTEGER NOT NULL DEFAULT 0'); } catch { /* ya existe */ }
 

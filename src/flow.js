@@ -1,6 +1,7 @@
 const config = require('./config');
 const { db, logEvent } = require('./db');
 const emails = require('./emails');
+const { TEAM_LABEL } = require('./teams');
 
 const BLOCKING = ['bases1', 'bases2']; // sin estos dos no se avisa al líder; GC se recomienda pero no bloquea
 const FOLLOWUP_DAYS = 7;
@@ -15,8 +16,9 @@ const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString();
 /** Ficha completa (con nombres de equipo y ciudad) lista para plantillas. */
 function fullApp(id) {
   return db
-    .prepare(`SELECT a.*, t.name AS team_name, t.notice AS team_notice, t.min_months, c.name AS city
-              FROM applications a JOIN teams t ON t.id = a.team_id JOIN cities c ON c.id = a.city_id WHERE a.id = ?`)
+    .prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, t.notice AS team_notice, t.min_months, c.name AS city
+              FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id
+              JOIN cities c ON c.id = a.city_id WHERE a.id = ?`)
     .get(id);
 }
 
@@ -188,13 +190,13 @@ function createFlow({ pco, mail }) {
   async function sendDigests() {
     let sent = 0;
     const scoped = (userId, statusList) =>
-      db.prepare(`SELECT a.*, t.name AS team_name, c.name AS city FROM applications a
-                  JOIN teams t ON t.id = a.team_id JOIN cities c ON c.id = a.city_id
+      db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
+                  JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                   WHERE a.status IN (${statusList.map(() => '?').join(',')})
                     AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)`).all(...statusList, userId);
 
     for (const l of db.prepare("SELECT * FROM users WHERE role='leader' AND active=1").all()) {
-      const myTeams = db.prepare('SELECT t.* FROM teams t JOIN leader_teams lt ON lt.team_id = t.id WHERE lt.user_id = ?').all(l.id);
+      const myTeams = db.prepare(`SELECT t.id, ${TEAM_LABEL} AS name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id JOIN leader_teams lt ON lt.team_id = t.id WHERE lt.user_id = ?`).all(l.id);
       const rows = scoped(l.id, ['pendiente_bases', 'listo', 'contactado', 'visito']);
       for (const team of myTeams) {
         const mine = rows.filter((r) => r.team_id === team.id).map((r) => ({ ...r, tpl: forTemplate(r) }));

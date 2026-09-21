@@ -58,5 +58,5 @@ test('el equipo acepta emoji con varias partes y solo URLs https o /uploads', as
   const ok = await save({ name: 'Familia', icon: '👨‍👩‍👧', image_url: '/uploads/team-abc.png' });
   assert.equal(ok.status, 200);
   const teams = await (await fetch(base + '/api/public')).json();
-  assert.equal(teams.teams.find((t) => t.name === 'Familia').icon, '👨‍👩‍👧');
+  assert.equal(teams.areas.find((t) => t.name === 'Familia').icon, '👨‍👩‍👧');
 });

@@ -8,6 +8,7 @@ const mail = require('./src/mail');
 const auth = require('./src/auth');
 const { createFlow } = require('./src/flow');
 const jobs = require('./src/jobs');
+const { publicTree, findSelectable } = require('./src/teams');
 
 if (config.sessionSecret.length < 32) {
   console.error('Falta SESSION_SECRET (mínimo 32 caracteres).');
@@ -49,7 +50,7 @@ app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/public', (_req, res) => {
   res.json({
-    teams: db.prepare('SELECT id,name,description,icon,image_url,min_months,notice FROM teams WHERE active = 1 ORDER BY sort, name').all(),
+    areas: publicTree(),
     cities: db.prepare('SELECT id,name FROM cities WHERE active = 1 ORDER BY name').all(),
     urls: config.urls,
   });
@@ -68,7 +69,7 @@ app.post('/api/apply', (req, res) => {
   const email = String(b.email || '').trim().toLowerCase().slice(0, 200);
   const phone = String(b.phone || '').trim().slice(0, 30);
   const city = db.prepare('SELECT id FROM cities WHERE id = ? AND active = 1').get(Number(b.city_id));
-  const team = db.prepare('SELECT id FROM teams WHERE id = ? AND active = 1').get(Number(b.team_id));
+  const team = findSelectable(Number(b.team_id));
   const tenure = Number(b.tenure);
   if (name.length < 2) throw bad('Escribe tu nombre');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('El email no es válido');
@@ -132,7 +133,7 @@ if (!config.panelPassword) console.warn('PANEL_PASSWORD vacío: líderes y volun
 if (!config.adminPassword) console.warn('ADMIN_PASSWORD vacío: el administrador no podrá entrar.');
 
 if (require.main === module) {
-  if (process.env.SEED_DEMO === '1') require('./scripts/seed-demo');
+  if (process.env.SEED_DEMO === '1') require('./scripts/seed-equipos').seed({ cities: true });
   app.listen(config.port, config.host, () => {
     console.log(`Únete al equipo en http://localhost:${config.port}`);
     jobs.start(flow);
