@@ -28,14 +28,20 @@ const leadersFor = (teamId, cityId) =>
               JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
               WHERE u.role = 'leader' AND u.active = 1`).all(teamId, cityId);
 
-/** Voluntario de Bases de la ciudad con menos personas pendientes (reparto equilibrado). */
-function pickBasesVolunteer(cityId) {
-  return db.prepare(`SELECT u.*, (SELECT COUNT(*) FROM applications a WHERE a.bases_user_id = u.id AND a.status = 'pendiente_bases') AS load
+/** Cuántas personas tiene ahora pendientes un voluntario (para repartir de forma equilibrada). */
+const LOAD = {
+  bases: "SELECT COUNT(*) FROM applications a WHERE a.bases_user_id = u.id AND a.status = 'pendiente_bases'",
+  gc: "SELECT COUNT(*) FROM applications a WHERE a.gc_user_id = u.id AND a.needs_gc = 1 AND a.gc_status != 'registrado'",
+};
+
+/** Voluntario (rol «bases» o «gc») de la ciudad con menos personas pendientes. */
+function pickVolunteer(role, cityId) {
+  return db.prepare(`SELECT u.*, (${LOAD[role]}) AS load
                      FROM users u JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
-                     WHERE u.role = 'bases' AND u.active = 1 ORDER BY load ASC, u.id ASC LIMIT 1`).get(cityId);
+                     WHERE u.role = ? AND u.active = 1 ORDER BY load ASC, u.id ASC LIMIT 1`).get(cityId, role);
 }
 
-const forTemplate = (a, pcoUrl) => ({ name: a.name, email: a.email, phone: a.phone, city: a.city, pco_url: pcoUrl });
+const forTemplate = (a, pcoUrl) => ({ name: a.name, email: a.email, phone: a.phone, city: a.city, team: a.team_name, pco_url: pcoUrl });
 
 /** Notas para el perfil de PCO: siempre el interés en servir y, si dice tener algo que no consta, otra nota aparte. */
 function noteTexts(a) {
@@ -50,6 +56,7 @@ function noteTexts(a) {
 
 function createFlow({ pco, mail }) {
   const safeMail = async (id, label, msg, to) => {
+    if (msg.enabled === false) return logEvent(id, null, 'email_desactivado', label); // desactivado por el admin en el panel
     try {
       await mail.sendMail({ to, ...msg });
       logEvent(id, null, 'email', label);
@@ -84,7 +91,7 @@ function createFlow({ pco, mail }) {
     if (!leaders.length) return alertAdmin(id, `Sin líder para ${a.team_name} en ${a.city}`, `${a.name} (${a.phone}) quiere servir en ${a.team_name} en ${a.city} y no hay ningún líder asignado.`);
     // Cursos que la persona dice tener y que no constan en Planning Center: se aceptan, pero el líder debe confirmarlos al llamar
     const unverified = Object.keys(LABEL).filter((k) => a['self_' + k] && !a['pco_' + k]).map((k) => LABEL[k]);
-    const msg = emails.leaderReadyEmail({ app: forTemplate(a), team: { name: a.team_name }, unverified });
+    const msg = emails.leaderReadyEmail({ app: forTemplate(a), team: { name: a.team_name }, unverified, sinGc: !!a.needs_gc });
     return safeMail(id, 'aviso al líder', msg, leaders.map((l) => l.email));
   }
 
@@ -126,32 +133,44 @@ function createFlow({ pco, mail }) {
     const declared = { bases1: !!a.self_bases1, bases2: !!a.self_bases2, gc: !!a.self_gc };
     const unverifiedKeys = Object.keys(LABEL).filter((k) => !course[k] && declared[k]);
     const missing = Object.keys(LABEL).filter((k) => !course[k] && !declared[k]);
+    const has = (k) => !missing.includes(k);
+    // Reparto: sin Bases 1 o sin Bases 2 → voluntario de Bases. Con Bases 1 y sin GC → voluntario de GC.
+    // (nada → Bases; solo Bases 1 → Bases y GC; Bases 1 + GC → Bases; Bases 1 + Bases 2 → GC)
+    const needsBases = !has('bases1') || !has('bases2');
+    const needsGc = has('bases1') && !has('gc');
     const blocked = missing.filter((k) => BLOCKING.includes(k));
     setStatus(blocked.length ? 'pendiente_bases' : 'recibida', {
       pco_person_id: person.id,
       pco_bases1: +course.bases1,
       pco_bases2: +course.bases2,
       pco_gc: +course.gc,
+      needs_gc: +needsGc,
     });
     logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
 
     await writeNotes(id);
 
-    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: a, team, missing }), a.email);
+    // Se asignan los voluntarios antes del email a la persona, para prometerle solo lo que va a pasar de verdad
+    const volunteers = {};
+    for (const [role, needed, label] of [['bases', needsBases, 'Bases'], ['gc', needsGc, 'GC']]) {
+      if (!needed) continue;
+      const vol = pickVolunteer(role, a.city_id);
+      if (vol) {
+        db.prepare(`UPDATE applications SET ${role}_user_id=? WHERE id=?`).run(vol.id, id);
+        logEvent(id, null, `${role}_asignado`, vol.email);
+        volunteers[role] = vol;
+      } else {
+        await alertAdmin(id, `Sin voluntario de ${label} en ${a.city}`, `${a.name} (${a.phone}) necesita un voluntario de ${label} en ${a.city} y no hay ninguno asignado.`);
+      }
+    }
+
+    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: a, team, missing, assign: { bases: !!volunteers.bases, gc: !!volunteers.gc } }), a.email);
+    if (volunteers.bases) await safeMail(id, 'aviso al voluntario de Bases', emails.basesEmail({ items: [{ app: forTemplate(a, person.url) }], missing }), volunteers.bases.email);
+    if (volunteers.gc) await safeMail(id, 'aviso al voluntario de GC', emails.gcEmail({ items: [{ app: forTemplate(a, person.url) }] }), volunteers.gc.email);
 
     if (!blocked.length) {
       await markReady(id);
       return 'listo';
-    }
-    if (blocked.includes('bases2')) {
-      const vol = pickBasesVolunteer(a.city_id);
-      if (vol) {
-        db.prepare('UPDATE applications SET bases_user_id=? WHERE id=?').run(vol.id, id);
-        logEvent(id, null, 'bases_asignado', vol.email);
-        await safeMail(id, 'aviso al voluntario de Bases', emails.basesEmail({ items: [{ app: forTemplate(a, person.url) }] }), vol.email);
-      } else {
-        await alertAdmin(id, `Sin voluntario de Bases en ${a.city}`, `${a.name} (${a.phone}) necesita Bases 2 en ${a.city} y no hay voluntarios asignados.`);
-      }
     }
     return 'pendiente_bases';
   }
@@ -162,15 +181,19 @@ function createFlow({ pco, mail }) {
     for (const { id } of ids) await process(id);
   }
 
-  /** Vuelve a mirar en Planning Center a los pendientes: si ya tienen Bases 2, se avisa al líder. */
+  /**
+   * Vuelve a mirar en Planning Center a los pendientes (de Bases o de GC).
+   * Si ya tienen Bases 1 y 2 se avisa al líder; si ya están en un GC dejan de estar pendientes de un voluntario de GC.
+   */
   async function recheckPending() {
-    const rows = db.prepare("SELECT id, pco_person_id, self_bases1, self_bases2 FROM applications WHERE status='pendiente_bases' AND pco_person_id IS NOT NULL").all();
+    const rows = db.prepare("SELECT id, status, pco_person_id, self_bases1, self_bases2, self_gc FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1) AND pco_person_id IS NOT NULL").all();
     let promoted = 0;
     for (const r of rows) {
       try {
         const c = await pco.getCourseStatus(r.pco_person_id, { fields: config.fields, required: config.required });
-        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, r.id);
-        if (BLOCKING.every((k) => c[k] || r['self_' + k])) {
+        const has = (k) => !!c[k] || !!r['self_' + k];
+        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, needs_gc=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, +(has('bases1') && !has('gc')), r.id);
+        if (r.status === 'pendiente_bases' && BLOCKING.every(has)) {
           await markReady(r.id);
           promoted++;
         }
@@ -189,6 +212,10 @@ function createFlow({ pco, mail }) {
   /** Resumen semanal a líderes y voluntarios de Bases. Devuelve cuántos emails se enviaron. */
   async function sendDigests() {
     let sent = 0;
+    const deliver = async (to, msg, label) => {
+      if (msg.enabled === false) return; // desactivado por el admin en el panel
+      await mail.sendMail({ to, ...msg }).then(() => sent++).catch((e) => console.error(`${label}:`, e.message));
+    };
     const scoped = (userId, statusList) =>
       db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
                   JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
@@ -204,7 +231,7 @@ function createFlow({ pco, mail }) {
         const followups = mine.filter((r) => ['contactado', 'visito'].includes(r.status) && r.followup_at && r.followup_at <= inDays(1)).map((r) => r.tpl);
         const pending = mine.filter((r) => r.status === 'pendiente_bases').map((r) => r.tpl);
         if (!ready.length && !followups.length && !pending.length) continue;
-        await mail.sendMail({ to: l.email, ...emails.leaderDigestEmail({ team, ready, followups, pending }) }).then(() => sent++).catch((e) => console.error('Resumen líder:', e.message));
+        await deliver(l.email, emails.leaderDigestEmail({ team, ready, followups, pending }), 'Resumen líder');
       }
     }
     for (const v of db.prepare("SELECT * FROM users WHERE role='bases' AND active=1").all()) {
@@ -212,7 +239,15 @@ function createFlow({ pco, mail }) {
         .filter((r) => (r.bases_user_id === v.id || !r.bases_user_id) && r.bases_status !== 'registrado')
         .map((r) => ({ app: forTemplate(r) }));
       if (!items.length) continue;
-      await mail.sendMail({ to: v.email, ...emails.basesEmail({ items, digest: true }) }).then(() => sent++).catch((e) => console.error('Resumen Bases:', e.message));
+      await deliver(v.email, emails.basesEmail({ items, digest: true }), 'Resumen Bases');
+    }
+    // Voluntarios de GC: personas con Bases 1 que aún no están en un Grupo de Conexión
+    for (const v of db.prepare("SELECT * FROM users WHERE role='gc' AND active=1").all()) {
+      const items = scoped(v.id, ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'])
+        .filter((r) => r.needs_gc && (r.gc_user_id === v.id || !r.gc_user_id) && r.gc_status !== 'registrado')
+        .map((r) => ({ app: forTemplate(r) }));
+      if (!items.length) continue;
+      await deliver(v.email, emails.gcEmail({ items, digest: true }), 'Resumen GC');
     }
     return sent;
   }

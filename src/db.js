@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL CHECK (role IN ('admin','leader','bases')),
+  role TEXT NOT NULL CHECK (role IN ('admin','leader','bases','gc')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -110,6 +110,44 @@ db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_team_name ON teams (COALESCE(pare
 
 try { db.exec("ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''"); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN notes_done INTEGER NOT NULL DEFAULT 0'); } catch { /* ya existe */ }
+
+// Migración: nuevo rol «gc» (voluntario de Grupos de Conexión). El CHECK de la tabla no se puede alterar: se reconstruye.
+if (!/'gc'/.test(db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get().sql)) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`BEGIN;
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL CHECK (role IN ('admin','leader','bases','gc')),
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      phone TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO users_new (id, email, name, role, active, created_at, phone)
+      SELECT id, email, name, role, active, created_at, phone FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    COMMIT;`);
+  db.exec('PRAGMA foreign_keys = ON');
+}
+for (const col of [
+  'gc_user_id INTEGER REFERENCES users(id)',
+  "gc_status TEXT NOT NULL DEFAULT 'sin_contactar'",
+  'needs_gc INTEGER NOT NULL DEFAULT 0', // 1 = tiene Bases 1 pero no GC: un voluntario de GC debe ayudarle
+]) {
+  try { db.exec(`ALTER TABLE applications ADD COLUMN ${col}`); } catch { /* ya existe */ }
+}
+// Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
+db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
+  key TEXT PRIMARY KEY,
+  subject TEXT NOT NULL,
+  heading TEXT NOT NULL,
+  body TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT NOT NULL DEFAULT ''
+)`);
 
 const getSetting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
 const setSetting = (key, value) =>

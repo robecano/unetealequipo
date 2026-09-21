@@ -111,7 +111,7 @@ app.post('/api/login', (req, res) => {
 app.post('/api/logout', (_req, res) => (auth.clearSessionCookie(res), res.json({ ok: true })));
 app.get('/api/me', (req, res) => (req.user ? res.json(req.user) : res.status(401).json({ error: 'Sesión no iniciada' })));
 
-app.use('/api/panel', require('./src/panel-routes')({ flow, pco }));
+app.use('/api/panel', require('./src/panel-routes')({ flow, pco, mail }));
 
 // ---------- Estático ----------
 

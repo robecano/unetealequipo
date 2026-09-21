@@ -26,7 +26,7 @@ const say = (m) => alert(m);
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { say(e.message); } };
 
 const STATUS = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', sin_pco: 'Sin ficha (Bases 1)', pendiente_bases: 'Pendiente de Bases 2', listo: 'Para llamar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
-const ROLE = { admin: 'Administración', leader: 'Líder de equipo', bases: 'Voluntario de Bases' };
+const ROLE = { admin: 'Administración', leader: 'Líder de equipo', bases: 'Voluntario de Bases', gc: 'Voluntario de GC' };
 const TENURE = { 0: '< 6 meses', 6: '6–12 meses', 12: '1–2 años', 24: '> 2 años' };
 const fmtDate = (s) => (s ? new Date(s.replace(' ', 'T') + (s.includes('Z') || s.includes('+') ? '' : 'Z')).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : '');
 let me = null;
@@ -67,15 +67,17 @@ async function applicationsView(box) {
     setExport(rows.length);
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
     body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', 'Estado', 'B1', 'GC', 'B2', 'Bases', 'Acciones'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', 'Estado', 'B1', 'GC', 'B2', 'Vol. Bases', 'Vol. GC', 'Acciones'].map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map((a) => h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null),
         course(a.pco_bases1, a.self_bases1), course(a.pco_gc, a.self_gc), course(a.pco_bases2, a.self_bases2),
         h('td', {}, a.bases_name || a.bases_email || h('span', { class: 'muted' }, '–'), a.bases_phone ? h('div', {}, h('a', { href: `tel:${a.bases_phone}` }, a.bases_phone)) : null, a.bases_email ? h('div', { class: 'muted' }, a.bases_status.replace('_', ' ')) : null),
+        h('td', {}, a.gc_name || a.gc_email || h('span', { class: 'muted' }, a.needs_gc ? 'sin asignar' : '–'), a.gc_phone ? h('div', {}, h('a', { href: `tel:${a.gc_phone}` }, a.gc_phone)) : null, a.gc_email ? h('div', { class: 'muted' }, a.gc_status.replace('_', ' ')) : null),
         h('td', {}, h('div', { class: 'acts' },
-          me.role === 'bases' ? [act(a.id, { bases_status: 'contactado' }, 'Contactado'), act(a.id, { bases_status: 'registrado' }, 'Registrado en Bases 2')] : [
+          me.role === 'gc' ? [act(a.id, { gc_status: 'contactado' }, 'Contactado'), act(a.id, { gc_status: 'registrado' }, 'Ya está en un GC')]
+          : me.role === 'bases' ? [act(a.id, { bases_status: 'contactado' }, 'Contactado'), act(a.id, { bases_status: 'registrado' }, 'Registrado en Bases 2')] : [
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Llamé') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Confirmar') : null,
@@ -90,7 +92,7 @@ async function applicationsView(box) {
   });
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, me.role === 'bases' ? null : st, exportLink), body);
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, ['bases', 'gc'].includes(me.role) ? null : st, exportLink), body);
   load();
 }
 
@@ -186,7 +188,7 @@ async function usersView(box) {
   const selectable = teams.filter((t) => t.parent_id || !teams.some((c) => c.parent_id === t.id)).map((t) => ({ id: t.id, name: t.parent_name && t.parent_name !== t.name ? `${t.parent_name} › ${t.name}` : t.name }));
   const checks = (name, items, selected) => h('div', { class: 'checks' }, items.map((i) => h('label', {}, h('input', { type: 'checkbox', name, value: i.id, checked: selected.includes(i.id) }), i.name)));
   const edit = (u = { role: 'leader', city_ids: [], team_ids: [], active: 1 }) => {
-    const roleSel = h('select', { name: 'role', disabled: !!u.id }, ['leader', 'bases'].map((r) => h('option', { value: r, selected: u.role === r }, ROLE[r])));
+    const roleSel = h('select', { name: 'role', disabled: !!u.id }, ['leader', 'bases', 'gc'].map((r) => h('option', { value: r, selected: u.role === r }, ROLE[r])));
     const teamBox = h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', selectable, u.team_ids));
     const syncRole = () => { teamBox.hidden = roleSel.value !== 'leader'; };
     roleSel.addEventListener('change', syncRole);
@@ -209,18 +211,95 @@ async function usersView(box) {
   };
   const cityName = (id) => cities.find((c) => c.id === id)?.name;
   const teamName = (id) => selectable.find((t) => t.id === id)?.name;
-  box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Añadir líder o voluntario de Bases')), editor,
+  box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Añadir líder o voluntario')), editor,
     h('div', { class: 'card' }, users.filter((u) => u.role !== 'admin').map((u) => h('div', { class: 'li' },
       h('div', {}, h('b', {}, u.name || u.email), u.active ? '' : ' (inactivo)', h('div', { class: 'muted' }, `${ROLE[u.role]} · ${u.email}`), u.phone ? h('div', {}, '📞 ', h('a', { href: `tel:${u.phone}` }, u.phone)) : h('div', { class: 'muted' }, 'Sin teléfono'), h('div', { class: 'muted' }, [u.city_ids.map(cityName).join(', '), u.role === 'leader' ? u.team_ids.map(teamName).join(', ') : ''].filter(Boolean).join(' — '))),
       h('button', { class: 'mini', onclick: () => edit(u) }, 'Editar')))));
+}
+
+
+// ---------- Emails (solo administración) ----------
+const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const GROUP_ICON = { persona: '🙋', lider: '📞', bases: '📘', gc: '🏠' };
+
+async function emailsView(box) {
+  const data = await api('/panel/admin/emails');
+  const editor = h('div');
+  const sched = data.schedule;
+
+  const daySel = h('select', {}, DAYS.map((d, i) => h('option', { value: i, selected: i === sched.day }, d)));
+  const hourSel = h('select', {}, Array.from({ length: 24 }, (_, i) => h('option', { value: i, selected: i === sched.hour }, `${String(i).padStart(2, '0')}:00`)));
+  const schedule = h('div', { class: 'card stack' },
+    h('h3', {}, 'Cuándo se envían'),
+    h('p', { class: 'muted' }, 'Inmediatos: en cuanto alguien se apunta (a la persona, al voluntario de Bases o de GC que le toque y al líder si ya tiene Bases 1 y 2). Si Planning Center no responde, se reintenta cada 5 minutos.'),
+    h('p', { class: 'muted' }, `Resumen semanal (líderes y voluntarios): una vez por semana, el día y la hora que elijas, en hora de ${sched.tz}. Solo se envía a quien tenga a alguien pendiente. Ese mismo día se vuelve a mirar en Planning Center quién ya ha completado Bases 2.`),
+    h('div', { class: 'toolbar' }, h('label', {}, 'Día ', daySel), h('label', {}, 'Hora ', hourSel),
+      h('button', { class: 'btn btn-sm', onclick: guard(async () => { await api('/panel/admin/email-schedule', { method: 'PUT', body: { day: Number(daySel.value), hour: Number(hourSel.value) } }); say('Horario guardado.'); }) }, 'Guardar horario')));
+
+  const open = (t) => {
+    const subject = h('input', { name: 'subject', value: t.subject });
+    const heading = h('input', { name: 'heading', value: t.heading });
+    const body = h('textarea', { name: 'body', rows: 16, class: 'mono' }, t.body);
+    const enabled = h('input', { type: 'checkbox', name: 'enabled', checked: t.enabled });
+    const status = h('span', { class: 'muted' });
+    const frame = h('iframe', { name: 'pv-' + t.key, class: 'preview', title: 'Vista previa' });
+    const insert = (text) => { const a = body.selectionStart, b = body.selectionEnd; body.setRangeText(text, a, b, 'end'); body.focus(); };
+    const values = () => ({ subject: subject.value, heading: heading.value, body: body.value, enabled: enabled.checked });
+    const form = h('form', { method: 'post', action: `/api/panel/admin/emails/${t.key}/preview`, target: frame.name, class: 'hidden' },
+      h('input', { type: 'hidden', name: 'subject' }), h('input', { type: 'hidden', name: 'heading' }), h('input', { type: 'hidden', name: 'body' }));
+    const preview = () => { form.subject.value = subject.value; form.heading.value = heading.value; form.body.value = body.value; form.submit(); };
+    const chips = h('div', { class: 'emojis' },
+      t.vars.map((v) => h('button', { type: 'button', class: 'mini chip', title: v.desc + (v.block ? ' (va solo, en su propio párrafo)' : ''), onclick: () => insert(v.block ? `\n\n{{${v.name}}}\n\n` : `{{${v.name}}}`) }, `{{${v.name}}}`)),
+      t.flags.map((f) => h('button', { type: 'button', class: 'mini chip alt', title: `Solo si: ${f.desc}`, onclick: () => insert(`{{#${f.name}}}texto{{/${f.name}}}`) }, `si ${f.name}`)));
+    editor.replaceChildren(h('div', { class: 'card form' },
+      h('h3', {}, t.title), h('p', { class: 'muted' }, `Para: ${t.to}. ${t.when}`),
+      h('label', {}, 'Asunto', subject), h('label', {}, 'Título dentro del email', heading),
+      h('label', {}, 'Cuerpo', body),
+      h('p', { class: 'muted' }, 'Toca un marcador para insertarlo donde tengas el cursor. Los morados son condicionales: solo se muestran si se cumple la condición.'),
+      chips,
+      h('details', {}, h('summary', {}, 'Cómo se escribe'), h('div', { class: 'muted' },
+        h('p', {}, 'Una línea en blanco separa los párrafos. ', h('code', {}, '**negrita**'), ' · ', h('code', {}, '_cursiva_'), ' · ', h('code', {}, '- elemento'), ' para listas · ', h('code', {}, '[texto](https://…)'), ' para enlaces · ', h('code', {}, '[[Texto del botón|https://…]]'), ' para un botón.'),
+        h('p', {}, 'Los marcadores marcados como «bloque» (listas de personas, avisos…) van solos en su párrafo. Si falta uno imprescindible o hay uno que no existe, no te dejará guardar.'))),
+      h('label', { class: 'checks' }, enabled, 'Enviar este email (desmárcalo para dejar de enviarlo)'),
+      h('div', { class: 'acts' },
+        h('button', { class: 'btn btn-sm', type: 'button', onclick: guard(async () => {
+          const out = await api(`/panel/admin/emails/${t.key}`, { method: 'PUT', body: values() });
+          status.textContent = 'Guardado ✓'; Object.assign(t, out); preview();
+          list(); // refresca las etiquetas «Personalizado / Desactivado»
+        }) }, 'Guardar'),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: preview }, 'Vista previa'),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: guard(async () => {
+          const out = await api(`/panel/admin/emails/${t.key}/test`, { method: 'POST', body: values() });
+          say(out.sent ? `Prueba enviada a ${out.to}.` : 'Sin SMTP configurado: la prueba solo se ha escrito en el registro del servidor.');
+        }) }, 'Enviarme una prueba'),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: guard(async () => {
+          if (!confirm('¿Volver al texto original de este email? Se pierde lo que hayas escrito.')) return;
+          const out = await api(`/panel/admin/emails/${t.key}`, { method: 'DELETE' });
+          Object.assign(t, out); open(t); list();
+        }) }, 'Restaurar el original'),
+        h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editor.replaceChildren() }, 'Cerrar'), status),
+      form, frame));
+    preview();
+    editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const listBox = h('div');
+  const list = () => listBox.replaceChildren(...Object.entries(data.groups).flatMap(([g, label]) => [
+    h('h3', { class: 'group-title' }, `${GROUP_ICON[g]} ${label}`),
+    h('div', { class: 'card' }, data.templates.filter((t) => t.group === g).map((t) => h('div', { class: 'li' },
+      h('div', {}, h('b', {}, t.title), t.customized ? h('span', { class: 'pill s-listo' }, 'Editado') : null, t.enabled ? null : h('span', { class: 'pill s-no_continua' }, 'Desactivado'), h('div', { class: 'muted' }, t.when)),
+      h('button', { class: 'mini', onclick: () => open(t) }, 'Editar')))),
+  ]));
+  list();
+  box.replaceChildren(schedule, editor, listBox);
 }
 
 // ---------- Estructura ----------
 async function boot() {
   try { me = await api('/me'); } catch { return; }
   if (!me?.id) return;
-  const tabs = [['apps', me.role === 'bases' ? 'Mis pendientes de Bases 2' : 'Solicitudes', applicationsView]];
-  if (me.role === 'admin') tabs.push(['teams', 'Equipos', teamsView], ['cities', 'Ciudades', citiesView], ['users', 'Líderes y Bases', usersView]);
+  const tabs = [['apps', me.role === 'bases' ? 'Mis pendientes de Bases' : me.role === 'gc' ? 'Personas para un GC' : 'Solicitudes', applicationsView]];
+  if (me.role === 'admin') tabs.push(['teams', 'Equipos', teamsView], ['cities', 'Ciudades', citiesView], ['users', 'Líderes y voluntarios', usersView], ['emails', 'Emails', emailsView]);
   const content = h('div');
   const bar = h('div', { class: 'tabs' });
   const go = guard(async (key) => {

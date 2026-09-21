@@ -6,6 +6,8 @@ const { db, tx, logEvent } = require('./db');
 const { requireAuth, requireAdmin } = require('./auth');
 const config = require('./config');
 const { TEAM_LABEL } = require('./teams');
+const et = require('./email-templates');
+const { getSetting, setSetting } = require('./db');
 const { fullApp, inDays, now, FOLLOWUP_DAYS } = require('./flow');
 
 const STATUSES = ['recibida', 'no_apto_aun', 'sin_pco', 'pendiente_bases', 'listo', 'contactado', 'visito', 'confirmado', 'no_continua'];
@@ -33,6 +35,10 @@ function scopeOf(user) {
   if (user.role === 'bases') {
     return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', "a.status IN ('pendiente_bases')"], params: [user.id] };
   }
+  if (user.role === 'gc') {
+    // Personas con Bases 1 que aún no están en un Grupo de Conexión, de sus ciudades
+    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', 'a.needs_gc = 1', "a.status NOT IN ('no_continua','no_apto_aun','sin_pco')"], params: [user.id] };
+  }
   return { where: [], params: [] };
 }
 
@@ -42,9 +48,11 @@ function visibleApplications(user, { status, q } = {}, limit = 500) {
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   return db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
-                       ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email, bu.phone AS bases_phone
+                       ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email, bu.phone AS bases_phone,
+                       gu.name AS gc_name, gu.email AS gc_email, gu.phone AS gc_phone, a.gc_user_id, a.gc_status, a.needs_gc
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      LEFT JOIN users bu ON bu.id = a.bases_user_id
+                     LEFT JOIN users gu ON gu.id = a.gc_user_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
 }
 
@@ -76,11 +84,11 @@ function csvCell(v) {
 function applicationsCsv(rows) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
-    'Voluntario Bases', 'Email voluntario', 'Teléfono voluntario', 'Estado en Bases', 'Próximo seguimiento', 'Última actualización'];
+    'Voluntario Bases', 'Email voluntario Bases', 'Teléfono voluntario Bases', 'Estado en Bases', 'Voluntario GC', 'Email voluntario GC', 'Teléfono voluntario GC', 'Estado en GC', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
-    a.bases_name, a.bases_email, a.bases_phone, a.bases_user_id ? String(a.bases_status).replace('_', ' ') : '', localDate(a.followup_at, false), localDate(a.updated_at)]);
+    a.bases_name, a.bases_email, a.bases_phone, a.bases_user_id ? String(a.bases_status).replace('_', ' ') : '', a.gc_name || a.gc_email, a.gc_email, a.gc_phone, a.gc_user_id ? String(a.gc_status).replace('_', ' ') : '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
   return '\ufeff' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
 }
@@ -93,7 +101,7 @@ function phoneOf(v) {
   return t;
 }
 
-module.exports = function panelRoutes({ flow, pco }) {
+module.exports = function panelRoutes({ flow, pco, mail }) {
   const r = express.Router();
   r.use(requireAuth);
 
@@ -115,7 +123,7 @@ module.exports = function panelRoutes({ flow, pco }) {
 
   /** Borra una solicitud y su historial. Solo administración y líderes (dentro de lo suyo); los voluntarios de Bases no. */
   r.delete('/applications/:id', (req, res) => {
-    if (req.user.role === 'bases') throw bad('Los voluntarios de Bases no pueden borrar solicitudes', 403);
+    if (['bases', 'gc'].includes(req.user.role)) throw bad('Los voluntarios no pueden borrar solicitudes', 403);
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     db.prepare('DELETE FROM applications WHERE id = ?').run(id); // el historial se borra en cascada
@@ -128,14 +136,19 @@ module.exports = function panelRoutes({ flow, pco }) {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     const a = fullApp(id);
-    const { status, bases_status: basesStatus, comment } = req.body || {};
+    const { status, bases_status: basesStatus, gc_status: gcStatus, comment } = req.body || {};
+    if (gcStatus !== undefined) {
+      if (!BASES_STATUSES.includes(gcStatus)) throw bad('Estado de GC no válido');
+      db.prepare('UPDATE applications SET gc_status=?, updated_at=? WHERE id=?').run(gcStatus, now(), id);
+      logEvent(id, req.user.id, 'gc_status', gcStatus);
+    }
     if (basesStatus !== undefined) {
       if (!BASES_STATUSES.includes(basesStatus)) throw bad('Estado de Bases no válido');
       db.prepare('UPDATE applications SET bases_status=?, updated_at=? WHERE id=?').run(basesStatus, now(), id);
       logEvent(id, req.user.id, 'bases_status', basesStatus);
     }
     if (status !== undefined) {
-      if (req.user.role === 'bases') throw bad('Solo el líder puede cambiar este estado', 403);
+      if (['bases', 'gc'].includes(req.user.role)) throw bad('Solo el líder puede cambiar este estado', 403);
       if (!['contactado', 'visito', 'confirmado', 'no_continua'].includes(status)) throw bad('Estado no válido');
       const followup = status === 'contactado' ? inDays(FOLLOWUP_DAYS) : status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
       db.prepare('UPDATE applications SET status=?, followup_at=?, updated_at=? WHERE id=?').run(status, followup, now(), id);
@@ -223,6 +236,80 @@ module.exports = function panelRoutes({ flow, pco }) {
     res.json({ ok: true });
   });
 
+  // ---------- Emails: textos editables y horario del resumen ----------
+  const tplView = (key) => {
+    const t = et.getTemplate(key);
+    const def = et.TEMPLATES[key];
+    return {
+      key, group: def.group, title: def.title, to: def.to, when: def.when, enabled: t.enabled, customized: t.customized, updated_at: t.updated_at || null, updated_by: t.updated_by || '',
+      subject: t.subject, heading: t.heading, body: t.body, original: { subject: def.subject, heading: def.heading, body: def.body },
+      vars: def.vars.map((n) => ({ name: n, desc: et.VARS[n].desc, block: !!et.VARS[n].block })),
+      flags: def.flags.map((n) => ({ name: n, desc: et.FLAGS[n] })), required: def.required,
+    };
+  };
+  const tplOr404 = (key) => { if (!et.TEMPLATES[key]) throw bad('Email no encontrado', 404); return key; };
+  const fields = (b) => ({ subject: str(b.subject, 400), heading: str(b.heading, 300), body: typeof b.body === 'string' ? b.body.replace(/\r\n/g, '\n').slice(0, 9000).trim() : '' });
+
+  admin.get('/emails', (_req, res) => res.json({ groups: et.GROUPS, templates: Object.keys(et.TEMPLATES).map(tplView), schedule: scheduleView() }));
+
+  admin.put('/emails/:key', (req, res) => {
+    const key = tplOr404(req.params.key);
+    const f = fields(req.body || {});
+    const errors = et.validate(key, f);
+    if (errors.length) return res.status(400).json({ error: errors.join(' '), errors });
+    const enabled = req.body?.enabled === false ? 0 : 1;
+    db.prepare(`INSERT INTO email_templates (key, subject, heading, body, enabled, updated_at, updated_by) VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,?)
+                ON CONFLICT(key) DO UPDATE SET subject=excluded.subject, heading=excluded.heading, body=excluded.body, enabled=excluded.enabled, updated_at=CURRENT_TIMESTAMP, updated_by=excluded.updated_by`)
+      .run(key, f.subject, f.heading, f.body, enabled, req.user.email);
+    console.log(`Email "${key}" editado por ${req.user.email}`);
+    res.json(tplView(key));
+  });
+
+  admin.delete('/emails/:key', (req, res) => {
+    db.prepare('DELETE FROM email_templates WHERE key = ?').run(tplOr404(req.params.key));
+    res.json(tplView(req.params.key));
+  });
+
+  /** Vista previa con datos de ejemplo. Se abre en un iframe: se responde como documento propio con su CSP (los emails llevan estilos en línea). */
+  admin.post('/emails/:key/preview', express.urlencoded({ extended: false, limit: '60kb' }), (req, res) => {
+    const key = tplOr404(req.params.key);
+    const f = fields(req.body || {});
+    const errors = et.validate(key, f);
+    const page = (inner) => `<!doctype html><meta charset="utf-8"><body style="margin:0;font-family:system-ui,sans-serif;background:#e5e7eb">${inner}</body>`;
+    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; frame-ancestors 'self'");
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Cache-Control', 'no-store');
+    if (errors.length) return res.type('html').send(page(`<div style="padding:16px;color:#991b1b;background:#fee2e2"><b>No se puede previsualizar:</b><ul>${errors.map((e) => `<li>${et.esc(e)}</li>`).join('')}</ul></div>`));
+    const m = et.render(key, et.sampleContext(key), f);
+    res.type('html').send(page(`<div style="padding:10px 16px;background:#111;color:#fff;font-size:13px"><b>Asunto:</b> ${et.esc(m.subject)}</div>${m.html}`));
+  });
+
+  /** Envía la plantilla (con datos de ejemplo) al email del propio administrador. */
+  admin.post('/emails/:key/test', wrap(async (req, res) => {
+    const key = tplOr404(req.params.key);
+    const f = fields(req.body || {});
+    const errors = et.validate(key, f);
+    if (errors.length) throw bad(errors.join(' '));
+    const m = et.render(key, et.sampleContext(key), f);
+    const out = await mail.sendMail({ to: req.user.email, subject: `[PRUEBA] ${m.subject}`, html: m.html, text: m.text });
+    res.json({ ok: true, to: req.user.email, sent: !!out.sent });
+  }));
+
+  const DIGEST = { day: 'digest_day', hour: 'digest_hour' };
+  const scheduleView = () => ({
+    day: getSetting(DIGEST.day) === null ? config.digestDay : Number(getSetting(DIGEST.day)),
+    hour: getSetting(DIGEST.hour) === null ? config.digestHour : Number(getSetting(DIGEST.hour)),
+    tz: config.tz,
+  });
+  admin.put('/email-schedule', (req, res) => {
+    const day = Number(req.body?.day), hour = Number(req.body?.hour);
+    if (!Number.isInteger(day) || day < 0 || day > 6) throw bad('Día no válido');
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw bad('Hora no válida');
+    setSetting(DIGEST.day, day);
+    setSetting(DIGEST.hour, hour);
+    res.json(scheduleView());
+  });
+
   const userRow = (u) => ({
     ...u,
     city_ids: db.prepare('SELECT city_id FROM user_cities WHERE user_id = ?').all(u.id).map((x) => x.city_id),
@@ -240,7 +327,7 @@ module.exports = function panelRoutes({ flow, pco }) {
     const b = req.body || {};
     const email = str(b.email, 200).toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Email no válido');
-    if (!['leader', 'bases', 'admin'].includes(b.role)) throw bad('Rol no válido');
+    if (!['leader', 'bases', 'gc', 'admin'].includes(b.role)) throw bad('Rol no válido');
     let id;
     const phone = phoneOf(b.phone);
     try { id = Number(db.prepare('INSERT INTO users (email,name,role,phone) VALUES (?,?,?,?)').run(email, str(b.name, 100), b.role, phone).lastInsertRowid); }

@@ -15,9 +15,16 @@ function localDayHour(d = new Date()) {
   return { day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday), hour: Number(p.hour) };
 }
 
+/** Día y hora del resumen semanal: lo que el admin haya puesto en el panel, o los valores por defecto (DIGEST_DAY / DIGEST_HOUR). */
+const digestSchedule = () => {
+  const day = getSetting('digest_day'), hour = getSetting('digest_hour');
+  return { day: day === null ? config.digestDay : Number(day), hour: hour === null ? config.digestHour : Number(hour) };
+};
+
 const isDigestDue = (d = new Date()) => {
   const { day, hour } = localDayHour(d);
-  return day === config.digestDay && hour >= config.digestHour && getSetting('digest_week') !== weekKey(d);
+  const cfg = digestSchedule();
+  return day === cfg.day && hour >= cfg.hour && getSetting('digest_week') !== weekKey(d);
 };
 
 function start(flow) {
@@ -39,4 +46,4 @@ function start(flow) {
   setTimeout(hourly, 30000).unref();
 }
 
-module.exports = { start, weekKey, isDigestDue };
+module.exports = { start, weekKey, isDigestDue, digestSchedule };
