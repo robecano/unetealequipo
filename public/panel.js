@@ -88,7 +88,7 @@ async function applicationsView(box) {
               load();
             }) }, 'Borrar'),
             me.role === 'admin' && ['recibida', 'sin_pco'].includes(a.status) ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null])))))))
-      : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
+      : h('div', { class: 'empty card' }, (['bases', 'gc'].includes(me.role) ? 'Ahora mismo no hay nadie de posible seguimiento.' : 'No hay solicitudes con estos filtros.')));
   });
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
@@ -298,7 +298,7 @@ async function emailsView(box) {
 async function boot() {
   try { me = await api('/me'); } catch { return; }
   if (!me?.id) return;
-  const tabs = [['apps', me.role === 'bases' ? 'Mis pendientes de Bases' : me.role === 'gc' ? 'Personas para un GC' : 'Solicitudes', applicationsView]];
+  const tabs = [['apps', me.role === 'bases' ? 'Posible seguimiento (Bases)' : me.role === 'gc' ? 'Posible seguimiento (GC)' : 'Solicitudes', applicationsView]];
   if (me.role === 'admin') tabs.push(['teams', 'Equipos', teamsView], ['cities', 'Ciudades', citiesView], ['users', 'Líderes y voluntarios', usersView], ['emails', 'Emails', emailsView]);
   const content = h('div');
   const bar = h('div', { class: 'tabs' });

@@ -197,3 +197,33 @@ test('el admin puede dar de alta a un voluntario de GC con teléfono', async () 
   const u = db.prepare("SELECT role, phone FROM users WHERE email = 'nuevo-gc@test.es'").get();
   assert.deepEqual([u.role, u.phone], ['gc', '+34 655 444 333']);
 });
+
+test('los voluntarios reciben una lista de posible seguimiento; los de GC explican qué son y por qué importan los GC', () => {
+  const items = [{ app: { name: 'Ana Ruiz', email: 'ana@x.es', phone: '600111222', city: 'Madrid', team: 'Cafetería', falta: 'GC' } }];
+  const gcOne = emails.gcEmail({ items });
+  assert.match(gcOne.subject, /^Posible seguimiento para GC: Ana Ruiz/);
+  assert.match(gcOne.html, /persona de posible seguimiento/);
+  assert.match(gcOne.html, /importancia de los Grupos de Conexión, qué son y cómo funcionan/);
+  assert.match(gcOne.html, /hillsong\.es\/gc/);
+  const gcDigest = emails.gcEmail({ items, digest: true });
+  assert.match(gcDigest.html, /lista de posible seguimiento/);
+  assert.match(gcDigest.html, /importancia de los Grupos de Conexión/);
+  const b = emails.basesEmail({ items, missing: ['bases2'] });
+  assert.match(b.subject, /^Posible seguimiento para Bases/);
+  assert.match(b.html, /cómo funciona \(horarios, agenda/);
+  assert.match(b.html, /hillsong\.es\/bases\b/);
+  assert.match(emails.basesEmail({ items, digest: true }).html, /lista de posible seguimiento/);
+  // y a la persona se le cuenta qué le explicará cada voluntario
+  const persona = emails.applicantEmail({ app: { name: 'Ana', city: 'Madrid' }, team: { name: 'X' }, missing: ['gc', 'bases2'], assign: { bases: true, gc: true } });
+  assert.match(persona.html, /por qué son importantes, qué son y cómo funcionan/);
+  assert.match(persona.html, /horarios, agenda/);
+});
+
+test('la web: «Cómo funciona» nombra Bases 1, GC y Bases 2 y el formulario pregunta en ese orden', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(html, /<b>Bases 1, GC y Bases 2<\/b>/);
+  assert.doesNotMatch(html, /<b>Bases 1 y 2<\/b>/);
+  assert.match(html, /Cuando lo tengas todo, el líder del equipo te llama/);
+  const orden = [...html.matchAll(/class="yn"><span>[^<]*<\/span><label><input type="radio" name="(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(orden, ['bases1', 'gc', 'bases2']);
+});
