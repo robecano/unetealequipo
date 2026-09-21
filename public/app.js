@@ -36,7 +36,7 @@ function renderAreas() {
 
 /** Ventana del área: cabecera y un desplegable por subequipo con su información y el botón para apuntarse. */
 function openArea(area) {
-  const join = (team) => { selectTeam(team.id); $('#dlg').close(); location.hash = '#apuntate'; };
+  const join = (team) => { $('#dlg').close(); goToForm(team.id); };
   const sub = (team) => h('details', { class: 'sub', open: area.teams.length === 1 },
     h('summary', {}, h('span', {}, team.name), team.notice ? h('span', { class: 'tag' }, 'Requisitos') : null),
     h('div', { class: 'sub-body' },
@@ -54,6 +54,17 @@ function openArea(area) {
     area.teams.length > 1 ? h('p', { class: 'dlg-count' }, `${plural(area.teams.length)} · elige uno para saber más`) : null,
     list);
   $('#dlg').showModal();
+}
+
+/**
+ * Lleva al formulario con el equipo elegido. No usa location.hash: si ya estás en #apuntate
+ * el navegador no se mueve, y al cerrar la ventana modal la página puede quedarse arriba del todo.
+ */
+function goToForm(teamId) {
+  if ($('#form').hidden) $('#again').click(); // si ya enviaste uno, vuelve a mostrar el formulario
+  selectTeam(teamId);
+  const go = () => $('#form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  requestAnimationFrame(() => setTimeout(go, 60)); // espera a que se cierre la ventana y se recoloque la página
 }
 
 function selectTeam(id) { $('[name=team_id]').value = String(id); updateNotice(); }
