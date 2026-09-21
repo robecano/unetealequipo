@@ -46,13 +46,15 @@ function openArea(area) {
   const list = h('div', { class: 'subs' }, area.teams.map(sub));
   // Al abrir uno se cierran los demás, para que la ventana no crezca sin fin
   list.addEventListener('toggle', (e) => { if (e.target.open) list.querySelectorAll('details[open]').forEach((d) => { if (d !== e.target) d.open = false; }); }, true);
-  $('#dlg-body').replaceChildren(
+  // replaceChildren escribe «null» si le pasas null: se filtran los huecos de los elementos opcionales
+  $('#dlg-body').replaceChildren(...[
     area.image_url ? h('img', { class: 'dlg-img', src: area.image_url, alt: '' }) : h('div', { class: 'dlg-icon' }, area.icon || ''),
     h('h3', {}, area.name),
     h('p', {}, area.description),
     area.teams.length > 1 && area.notice ? h('p', { class: 'info' }, area.notice) : null,
     area.teams.length > 1 ? h('p', { class: 'dlg-count' }, `${plural(area.teams.length)} · elige uno para saber más`) : null,
-    list);
+    list,
+  ].filter(Boolean));
   $('#dlg').showModal();
 }
 
