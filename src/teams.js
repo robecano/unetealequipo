@@ -21,7 +21,7 @@ function publicTree() {
   return areas.map((a) => {
     const children = kids.filter((k) => k.parent_id === a.id);
     return {
-      id: a.id, name: a.name, description: a.description, icon: a.icon, image_url: a.image_url, notice: a.notice,
+      id: a.id, name: a.name, description: a.description, icon: a.icon, image_url: a.image_url, image_pos: a.image_pos, notice: a.notice,
       teams: children.length ? children.map((c) => pick(c, a)) : [pick(a)],
     };
   });

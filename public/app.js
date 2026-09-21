@@ -47,15 +47,34 @@ function openArea(area) {
   // Al abrir uno se cierran los demás, para que la ventana no crezca sin fin
   list.addEventListener('toggle', (e) => { if (e.target.open) list.querySelectorAll('details[open]').forEach((d) => { if (d !== e.target) d.open = false; }); }, true);
   // replaceChildren escribe «null» si le pasas null: se filtran los huecos de los elementos opcionales
+  const photo = area.image_url ? h('img', { class: 'dlg-img', src: area.image_url, alt: '' }) : null;
+  if (photo) photo.style.objectPosition = `50% ${area.image_pos ?? 30}%`; // enfoque vertical elegido para que no se corten las caras
   $('#dlg-body').replaceChildren(...[
-    area.image_url ? h('img', { class: 'dlg-img', src: area.image_url, alt: '' }) : h('div', { class: 'dlg-icon' }, area.icon || ''),
+    photo || h('div', { class: 'dlg-icon' }, area.icon || ''),
     h('h3', {}, area.name),
     h('p', {}, area.description),
     area.teams.length > 1 && area.notice ? h('p', { class: 'info' }, area.notice) : null,
     area.teams.length > 1 ? h('p', { class: 'dlg-count' }, `${plural(area.teams.length)} · elige uno para saber más`) : null,
     list,
   ].filter(Boolean));
+  lockPage();
   $('#dlg').showModal();
+  $('#dlg').scrollTop = 0; // siempre se abre desde el principio, no donde se quedó la vez anterior
+}
+
+/**
+ * showModal() reinicia el scroll de la página en algunos navegadores (sobre todo en el móvil): al cerrar, la persona perdía el sitio.
+ * Se congela el fondo mientras la ventana está abierta y se restaura su posición al cerrarla (por cualquier vía).
+ */
+let lockedAt = 0;
+function lockPage() {
+  lockedAt = window.scrollY;
+  Object.assign(document.body.style, { position: 'fixed', top: `-${lockedAt}px`, left: '0', right: '0' });
+}
+function unlockPage() {
+  if (document.body.style.position !== 'fixed') return;
+  Object.assign(document.body.style, { position: '', top: '', left: '', right: '' });
+  window.scrollTo({ top: lockedAt, behavior: 'instant' });
 }
 
 /**
@@ -100,6 +119,7 @@ $('#search').addEventListener('input', renderAreas);
 $('[name=team_id]').addEventListener('change', updateNotice);
 $('[name=tenure]').addEventListener('change', updateNotice);
 $('#dlg-close').addEventListener('click', () => $('#dlg').close());
+$('#dlg').addEventListener('close', unlockPage);
 $('#dlg').addEventListener('click', (e) => { if (e.target === $('#dlg')) $('#dlg').close(); });
 $('#again').addEventListener('click', () => { $('#form').reset(); $('#form').hidden = false; $('#done').hidden = true; updateNotice(); });
 

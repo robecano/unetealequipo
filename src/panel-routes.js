@@ -47,18 +47,30 @@ function scopeOf(user, removed) {
   return { where: [], params: [] };
 }
 
+let leadersStmt;
+/** Líderes de equipo activos de un equipo en una ciudad. */
+function leadersOf(teamId, cityId) {
+  leadersStmt ||= db.prepare(`SELECT u.name, u.email, u.phone FROM users u
+    JOIN leader_teams lt ON lt.user_id = u.id AND lt.team_id = ? JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
+    WHERE u.role = 'leader' AND u.active = 1 ORDER BY u.name, u.email`);
+  return leadersStmt.all(teamId, cityId);
+}
+
 function visibleApplications(user, { status, q, removed } = {}, limit = 500) {
   const { where, params } = scopeOf(user, !!removed);
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
-  return db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
+  const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
                        ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email, bu.phone AS bases_phone,
-                       gu.name AS gc_name, gu.email AS gc_email, gu.phone AS gc_phone, a.gc_user_id, a.gc_status, a.needs_gc, a.needs_bases, a.bases_removed, a.gc_removed, a.leader_hidden, a.bases_form_before, a.bases_form_at
+                       gu.name AS gc_name, gu.email AS gc_email, gu.phone AS gc_phone, a.gc_user_id, a.gc_status, a.needs_gc, a.needs_bases, a.bases_removed, a.gc_removed, a.leader_hidden, a.bases_form_before, a.bases_form_at, a.team_id, a.city_id
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      LEFT JOIN users bu ON bu.id = a.bases_user_id
                      LEFT JOIN users gu ON gu.id = a.gc_user_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
+  // Solo la administración ve qué líder(es) de equipo tiene asignada cada persona (los del equipo y la ciudad de su solicitud)
+  if (user.role === 'admin') for (const r of rows) r.leaders = leadersOf(r.team_id, r.city_id);
+  return rows;
 }
 
 /** ¿Puede este usuario ver/tocar esta solicitud? Consulta directa por id (no depende del límite de la lista). */
@@ -86,13 +98,14 @@ function csvCell(v) {
   return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function applicationsCsv(rows) {
+function applicationsCsv(rows, { withLeaders = false } = {}) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
-    'Voluntario Bases', 'Email voluntario Bases', 'Teléfono voluntario Bases', 'Estado en Bases', 'Voluntario GC', 'Email voluntario GC', 'Teléfono voluntario GC', 'Estado en GC', 'Ya rellenó el formulario de Bases antes de apuntarse', 'Próximo seguimiento', 'Última actualización'];
+    ...(withLeaders ? ['Líder de equipo'] : []), 'Voluntario Bases', 'Email voluntario Bases', 'Teléfono voluntario Bases', 'Estado en Bases', 'Voluntario GC', 'Email voluntario GC', 'Teléfono voluntario GC', 'Estado en GC', 'Ya rellenó el formulario de Bases antes de apuntarse', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
+    ...(withLeaders ? [(a.leaders || []).map((l) => [l.name || l.email, l.phone].filter(Boolean).join(' · ')).join(' / ') || 'Sin líder asignado'] : []),
     a.bases_name, a.bases_email, a.bases_phone, a.bases_user_id ? String(a.bases_status).replace('_', ' ') : '', a.gc_name || a.gc_email, a.gc_email, a.gc_phone, a.gc_user_id ? String(a.gc_status).replace('_', ' ') : '', a.needs_bases && a.bases_form_before ? 'Sí' : '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
   return '\ufeff' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
@@ -115,7 +128,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="solicitudes-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.setHeader('Cache-Control', 'no-store');
-    res.send(applicationsCsv(rows));
+    res.send(applicationsCsv(rows, { withLeaders: req.user.role === 'admin' }));
   });
 
   r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), removed: req.query.removed === '1' })));
@@ -218,7 +231,8 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   admin.get('/teams', (_req, res) =>
     res.json(db.prepare('SELECT t.*, p.name AS parent_name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id ORDER BY COALESCE(p.sort, t.sort), COALESCE(p.name, t.name), t.parent_id IS NOT NULL, t.sort, t.name').all()));
 
-  const teamFields = (b) => [str(b.name, 80), str(b.description, 1200), firstChars(b.icon, 6), str(b.image_url, 500), Math.max(0, parseInt(b.min_months, 10) || 0), str(b.notice, 600), flag(b.active ?? 1), parseInt(b.sort, 10) || 0];
+  const clamp100 = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 30; };
+  const teamFields = (b) => [str(b.name, 80), str(b.description, 1200), firstChars(b.icon, 6), str(b.image_url, 500), Math.max(0, parseInt(b.min_months, 10) || 0), str(b.notice, 600), flag(b.active ?? 1), parseInt(b.sort, 10) || 0, clamp100(b.image_pos)];
   /** parent_id: vacío = es un área (tarjeta). Solo puede colgar de un área, nunca de un subequipo ni de sí mismo. */
   function parentOf(b, selfId) {
     if (b.parent_id === undefined || b.parent_id === null || b.parent_id === '') return null;
@@ -234,7 +248,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     if (!f[0]) throw bad('Falta el nombre');
     if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
     const parent = parentOf(b, null);
-    try { res.json({ id: Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort,parent_id) VALUES (?,?,?,?,?,?,?,?,?)').run(...f, parent).lastInsertRowid) }); }
+    try { res.json({ id: Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort,image_pos,parent_id) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...f, parent).lastInsertRowid) }); }
     catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
   });
   admin.put('/teams/:id', (req, res) => {
@@ -244,7 +258,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     if (!f[0]) throw bad('Falta el nombre');
     if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
     const parent = parentOf(b, id);
-    try { db.prepare('UPDATE teams SET name=?,description=?,icon=?,image_url=?,min_months=?,notice=?,active=?,sort=?,parent_id=? WHERE id=?').run(...f, parent, id); }
+    try { db.prepare('UPDATE teams SET name=?,description=?,icon=?,image_url=?,min_months=?,notice=?,active=?,sort=?,image_pos=?,parent_id=? WHERE id=?').run(...f, parent, id); }
     catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
     res.json({ ok: true });
   });

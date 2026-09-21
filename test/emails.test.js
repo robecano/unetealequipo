@@ -223,7 +223,13 @@ test('la web: «Cómo funciona» nombra Bases 1, GC y Bases 2 y el formulario pr
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
   assert.match(html, /<b>Bases 1, GC y Bases 2<\/b>/);
   assert.doesNotMatch(html, /<b>Bases 1 y 2<\/b>/);
-  assert.match(html, /Cuando lo tengas todo, el líder del equipo te llama/);
+  assert.match(html, /<b>Te contactamos<\/b><span>Alguien del equipo te llamará o escribirá esta semana para conectarte el próximo domingo\.<\/span>/);
+  assert.match(html, /Si te falta algo, un voluntario te llama para ayudarte a tu siguiente paso\./);
+  assert.match(html, /En tus primeros días sirviendo, volveremos a contactar contigo para saber cómo estás\. ¡Bienvenido!/);
+  assert.doesNotMatch(html, /Servir es parte de la historia/i);
+  assert.match(html, /<h2>Únete al Equipo<\/h2>/);
+  assert.match(html, /Solo necesitamos unos datos tuyos y te contactaremos por email, whatsapp o teléfono para ayudarte con tus siguientes pasos\./);
+  assert.doesNotMatch(html, /Apúntate para servir/);
   const orden = [...html.matchAll(/class="yn"><span>.*?<\/span><label><input type="radio" name="(\w+)"/g)].map((m) => m[1]);
   assert.match(html, /¿Has hecho el curso gratuito Bases 1\? <a href="https:\/\/hillsong\.es\/bases"[^>]*>\+info<\/a>/);
   assert.match(html, /¿Estás en un Grupo de Conexión\? <a href="https:\/\/hillsong\.es\/gruposdeconexion"[^>]*>\+info<\/a>/);

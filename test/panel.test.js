@@ -144,3 +144,32 @@ test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el pan
   assert.deepEqual(h.slice(9, 15), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)']);
   assert.deepEqual(v.slice(9, 15), ['Sí', 'No', 'Sí', 'Sí', 'No', 'Sí']);
 });
+
+test('el administrador ve el líder de equipo asignado a cada persona (y si no hay, se le avisa); los demás roles no', async () => {
+  const conLider = apply('Con Líder', teamA);          // teamA + city tiene a «Lía Líder»
+  const sinLider = apply('Sin Líder', teamB);          // teamB no tiene ningún líder
+  const rows = await (await req('admin', 'GET', '/api/panel/applications')).json();
+  const a = rows.find((r) => r.id === conLider), b = rows.find((r) => r.id === sinLider);
+  assert.deepEqual(a.leaders.map((l) => [l.name, l.email, l.phone]), [['Lía Líder', 'lider@test.es', '+34 611 222 333']]);
+  assert.deepEqual(b.leaders, []);
+  // un líder desactivado no cuenta
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(leaderId);
+  assert.deepEqual((await (await req('admin', 'GET', '/api/panel/applications')).json()).find((r) => r.id === conLider).leaders, []);
+  db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(leaderId);
+  // ni el líder ni los voluntarios reciben ese dato
+  for (const who of ['leader', 'bases']) {
+    const propios = await (await req(who, 'GET', '/api/panel/applications')).json();
+    assert.ok(propios.every((r) => r.leaders === undefined), who);
+  }
+  // CSV: columna «Líder de equipo» solo para el administrador
+  const csvAdmin = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=L%C3%ADder')).text()).replace(/^﻿/, '').trim().split('\r\n');
+  const head = csvAdmin[0].split(';');
+  const i = head.indexOf('Líder de equipo');
+  assert.ok(i > 0);
+  assert.equal(head[i + 1], 'Voluntario Bases');
+  const fila = (n) => csvAdmin.slice(1).find((l) => l.includes(n)).split(';');
+  assert.equal(fila('Con Líder')[i], 'Lía Líder · +34 611 222 333');
+  assert.equal(fila('Sin Líder')[i], 'Sin líder asignado');
+  const csvLider = await (await req('leader', 'GET', '/api/panel/applications.csv')).text();
+  assert.doesNotMatch(csvLider.split('\r\n')[0], /Líder de equipo/);
+});

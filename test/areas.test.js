@@ -152,3 +152,22 @@ test('el aviso de organización aparece en Comunidades, Sisterhood, Jóvenes, Ci
   const id2 = Number(db.prepare("INSERT INTO applications (name,email,phone,city_id,team_id) VALUES ('Eva','e@x.es','600111222',?,?)").run(city, kids).lastInsertRowid);
   assert.ok(!fullApp(id2).area_notice);
 });
+
+test('cada área lleva un enfoque de foto (para que no se corten las caras) que se guarda, se acota a 0-100 y no se pisa al recargar los equipos', async () => {
+  const kids = publicTree().find((a) => a.name === 'Kids');
+  assert.equal(kids.image_pos, 0, 'la voluntaria de Kids está arriba: enfoque en la parte superior');
+  assert.ok(publicTree().every((a) => Number.isInteger(a.image_pos) && a.image_pos >= 0 && a.image_pos <= 100));
+  const id = db.prepare("SELECT id FROM teams WHERE name = 'Kids' AND parent_id IS NULL").get().id;
+  const put = (image_pos) => post(`/api/panel/admin/teams/${id}`, { name: 'Kids', description: 'x', icon: '🧒', image_url: '/img/areas/kids.jpg', min_months: 0, sort: 5, active: true, image_pos }, 'PUT');
+  assert.equal((await put(55)).status, 200);
+  assert.equal(db.prepare('SELECT image_pos p FROM teams WHERE id = ?').get(id).p, 55);
+  assert.equal((await put(250)).status, 200);
+  assert.equal(db.prepare('SELECT image_pos p FROM teams WHERE id = ?').get(id).p, 100, 'se acota a 100');
+  assert.equal((await put(-9)).status, 200);
+  assert.equal(db.prepare('SELECT image_pos p FROM teams WHERE id = ?').get(id).p, 0, 'se acota a 0');
+  assert.equal((await put('abc')).status, 200);
+  assert.equal(db.prepare('SELECT image_pos p FROM teams WHERE id = ?').get(id).p, 30, 'un valor no numérico vuelve al enfoque por defecto');
+  db.prepare('UPDATE teams SET image_pos = 77 WHERE id = ?').run(id);
+  seed();
+  assert.equal(db.prepare('SELECT image_pos p FROM teams WHERE id = ?').get(id).p, 77, 'lo elegido en el panel no se pisa');
+});

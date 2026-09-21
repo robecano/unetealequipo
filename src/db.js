@@ -154,6 +154,8 @@ for (const col of [
 ]) {
   try { db.exec(`ALTER TABLE applications ADD COLUMN ${col}`); } catch { /* ya existe */ }
 }
+// Enfoque vertical de la foto del área en su ventana (0 = arriba, 100 = abajo), para que no se corten las caras.
+try { db.exec('ALTER TABLE teams ADD COLUMN image_pos INTEGER NOT NULL DEFAULT 30'); } catch { /* ya existe */ }
 // Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
   key TEXT PRIMARY KEY,

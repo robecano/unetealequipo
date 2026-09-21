@@ -72,10 +72,14 @@ async function applicationsView(box) {
     const quitar = (a, quitadas, quitarTxt = 'Quitar de mi lista', volverTxt = 'Volver a mi lista') => act(a.id, { removed: !quitadas }, quitadas ? volverTxt : quitarTxt);
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
     body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', 'Estado', 'B1', 'GC', 'B2', 'Vol. Bases', 'Vol. GC', 'Acciones'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', me.role === 'admin' ? 'Líder de equipo' : null, 'Estado', 'B1', 'GC', 'B2', 'Vol. Bases', 'Vol. GC', 'Acciones'].filter(Boolean).map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map((a) => h('tr', {},
         h('td', {}, h('b', {}, a.name), a.needs_bases && a.bases_form_before ? h('div', { class: 'warn-mini' }, '⚠ Ya rellenó el formulario de Bases anteriormente pero no fue contactado') : null, h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
+        // Solo la administración: qué líder (o líderes) de equipo tiene asignada esta persona
+        me.role === 'admin' ? h('td', {}, a.leaders?.length
+          ? a.leaders.map((l) => h('div', {}, l.name || l.email, l.phone ? h('div', {}, h('a', { href: `tel:${l.phone}` }, l.phone)) : null))
+          : h('span', { class: 'no' }, 'Sin líder asignado')) : null,
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null),
         course(a.pco_bases1, a.self_bases1), course(a.pco_gc, a.self_gc), course(a.pco_bases2, a.self_bases2),
         h('td', {}, a.bases_name || a.bases_email || h('span', { class: 'muted' }, '–'), a.bases_phone ? h('div', {}, h('a', { href: `tel:${a.bases_phone}` }, a.bases_phone)) : null, a.bases_email ? h('div', { class: 'muted' }, a.bases_status.replace('_', ' ')) : null),
@@ -113,7 +117,16 @@ function media(t) {
   const icon = h('input', { name: 'icon', value: t.icon || '', placeholder: '🎶', maxlength: '12' });
   const image = h('input', { name: 'image_url', value: t.image_url || '', placeholder: 'https://… o sube una imagen' });
   const status = h('span', { class: 'muted' });
-  const draw = () => preview.replaceChildren(image.value.trim() ? h('img', { src: image.value.trim(), alt: '' }) : h('span', { class: 'icon' }, icon.value.trim() || '🙂'));
+  // Enfoque de la foto en la ventana del área (marco 4:3): 0 = arriba, 100 = abajo. Sirve para que no se corten las caras.
+  const pos = h('input', { type: 'range', name: 'image_pos', min: '0', max: '100', step: '1', value: String(t.image_pos ?? 30) });
+  const framed = h('div', { class: 'frame-preview' });
+  const draw = () => {
+    preview.replaceChildren(image.value.trim() ? h('img', { src: image.value.trim(), alt: '' }) : h('span', { class: 'icon' }, icon.value.trim() || '🙂'));
+    framed.replaceChildren(image.value.trim() ? h('img', { src: image.value.trim(), alt: '' }) : h('span', { class: 'muted' }, 'Sin foto'));
+    const im = framed.querySelector('img');
+    if (im) im.style.objectPosition = `50% ${pos.value}%`;
+  };
+  pos.addEventListener('input', draw);
   icon.addEventListener('input', draw);
   image.addEventListener('input', draw);
   const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', onchange: async (e) => {
@@ -137,6 +150,7 @@ function media(t) {
       h('label', {}, 'Emoji del equipo', icon),
       h('div', { class: 'emojis' }, EMOJIS.map((em) => h('button', { type: 'button', class: 'mini', onclick: () => { icon.value = em; draw(); } }, em))),
       h('label', {}, 'Imagen (opcional, PNG, JPG o WebP, máx. 3 MB)', file, image),
+      h('label', {}, 'Enfoque de la foto en la ventana (arriba ↔ abajo)', pos, framed),
       h('button', { type: 'button', class: 'mini', onclick: () => { image.value = ''; status.textContent = 'Imagen quitada. Pulsa Guardar.'; draw(); } }, 'Quitar imagen'),
       status));
 }
