@@ -34,7 +34,7 @@ const VARS = {
   sin_verificar: { desc: 'Aviso ⚠ si dice tener algo que no consta en Planning Center', block: true },
   seccion_llamar: { desc: 'Sección «Llamar esta semana» (solo si hay gente)', block: true },
   seccion_seguimiento: { desc: 'Sección «Llamada de seguimiento» (solo si hay gente)', block: true },
-  seccion_pendientes: { desc: 'Sección «Por hacer Bases 2» (solo si hay gente)', block: true },
+  seccion_pendientes: { desc: 'Sección «Interesados que aún no tienen Bases 1, Bases 2 o GC» (seguimiento opcional, solo si hay gente)', block: true },
 };
 // Condicionales: {{#bases}}texto{{/bases}} solo se muestra si se cumple.
 const FLAGS = {
@@ -88,7 +88,7 @@ const TEMPLATES = {
   },
   leader_digest: {
     group: 'lider', title: 'Resumen semanal', to: 'Cada líder, un email por equipo',
-    when: 'Una vez por semana (día y hora en «Cuándo se envían»). Solo si hay alguien en alguna sección.',
+    when: 'Una vez por semana (día y hora en «Cuándo se envían»). Tres listados: a quién llamar, seguimientos, y un listado aparte y opcional de interesados que aún no tienen Bases 1, Bases 2 o GC (indica qué le falta a cada uno). Solo se envía si hay alguien en alguna sección.',
     vars: ['equipo', 'seccion_llamar', 'seccion_seguimiento', 'seccion_pendientes', 'url_panel'], flags: [], required: ['seccion_llamar', 'seccion_seguimiento', 'seccion_pendientes'],
     subject: 'Resumen semanal · {{equipo}}', heading: 'Tu equipo esta semana',
     body: `Resumen semanal de **{{equipo}}**.\n\n{{seccion_llamar}}\n\n{{seccion_seguimiento}}\n\n{{seccion_pendientes}}\n\n${FOOT}`,
@@ -247,7 +247,7 @@ function sampleContext(key) {
       sin_verificar: p('⚠ <b>Dato sin verificar:</b> dice haber hecho Bases 2, pero no consta en Planning Center. Confírmalo al llamarla.'),
       seccion_llamar: h('📞 Llamar esta semana e invitar el domingo') + list,
       seccion_seguimiento: h('🔁 Llamada de seguimiento (consolidar en el equipo)') + list,
-      seccion_pendientes: h('⏳ Interesados en servir en tu equipo, pero por hacer Bases 2') + list + p('Un voluntario de Bases les está haciendo seguimiento. Cuando terminen, te avisaremos.'),
+      seccion_pendientes: h('⏳ Interesados que aún no tienen Bases 1, Bases 2 o GC (seguimiento opcional)') + list.replace('Perfil</a>', 'Perfil</a> · <i>Le falta: Bases 2 y GC</i>') + p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC les ayudan cuando corresponde.'),
     },
   };
 }

@@ -41,6 +41,12 @@ function pickVolunteer(role, cityId) {
                      WHERE u.role = ? AND u.active = 1 ORDER BY load ASC, u.id ASC LIMIT 1`).get(cityId, role);
 }
 
+/** Qué le falta a una solicitud, según Planning Center y lo que dijo la persona. */
+function faltaDe(r) {
+  if (r.status === 'sin_pco') return 'todo (no tiene ficha en Planning Center: Bases 1, Bases 2 y GC)';
+  return joinEs(Object.keys(LABEL).filter((k) => !r['pco_' + k] && !r['self_' + k]).map((k) => LABEL[k]));
+}
+
 const forTemplate = (a, pcoUrl) => ({ name: a.name, email: a.email, phone: a.phone, city: a.city, team: a.team_name, pco_url: pcoUrl });
 
 /** Notas para el perfil de PCO: siempre el interés en servir y, si dice tener algo que no consta, otra nota aparte. */
@@ -220,16 +226,19 @@ function createFlow({ pco, mail }) {
       db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
                   JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                   WHERE a.status IN (${statusList.map(() => '?').join(',')})
-                    AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)`).all(...statusList, userId);
+                    AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)
+                    AND NOT (a.status = 'sin_pco' AND EXISTS (SELECT 1 FROM applications b WHERE lower(b.email) = lower(a.email) AND b.team_id = a.team_id AND b.id > a.id))`).all(...statusList, userId); // quien no tenía ficha y volvió a apuntarse: solo cuenta la última
 
     for (const l of db.prepare("SELECT * FROM users WHERE role='leader' AND active=1").all()) {
       const myTeams = db.prepare(`SELECT t.id, ${TEAM_LABEL} AS name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id JOIN leader_teams lt ON lt.team_id = t.id WHERE lt.user_id = ?`).all(l.id);
-      const rows = scoped(l.id, ['pendiente_bases', 'listo', 'contactado', 'visito']);
+      const rows = scoped(l.id, ['pendiente_bases', 'sin_pco', 'listo', 'contactado', 'visito']);
       for (const team of myTeams) {
-        const mine = rows.filter((r) => r.team_id === team.id).map((r) => ({ ...r, tpl: forTemplate(r) }));
-        const ready = mine.filter((r) => r.status === 'listo').map((r) => r.tpl);
-        const followups = mine.filter((r) => ['contactado', 'visito'].includes(r.status) && r.followup_at && r.followup_at <= inDays(1)).map((r) => r.tpl);
-        const pending = mine.filter((r) => r.status === 'pendiente_bases').map((r) => r.tpl);
+        const mine = rows.filter((r) => r.team_id === team.id);
+        const sinGc = (r) => ({ ...forTemplate(r), falta: r.needs_gc ? 'GC' : '' }); // ya se les puede llamar, pero aún no están en un GC
+        const ready = mine.filter((r) => r.status === 'listo').map(sinGc);
+        const followups = mine.filter((r) => ['contactado', 'visito'].includes(r.status) && r.followup_at && r.followup_at <= inDays(1)).map(sinGc);
+        // Listado aparte y opcional: interesados que aún no tienen Bases 1, Bases 2 o GC (o ni siquiera ficha en Planning Center)
+        const pending = mine.filter((r) => ['pendiente_bases', 'sin_pco'].includes(r.status)).map((r) => ({ ...forTemplate(r), falta: faltaDe(r) }));
         if (!ready.length && !followups.length && !pending.length) continue;
         await deliver(l.email, emails.leaderDigestEmail({ team, ready, followups, pending }), 'Resumen líder');
       }

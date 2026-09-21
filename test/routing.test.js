@@ -152,3 +152,83 @@ test('pasa de Bases pendiente a lista para el líder al completar Bases 2 (y sig
   assert.ok(to('lider@test.es').length >= 1);
   assert.equal(db.prepare('SELECT needs_gc FROM applications WHERE id = ?').get(id).needs_gc, 1);
 });
+
+// ---------- Listado opcional para el líder: interesados que aún no tienen Bases 1, Bases 2 o GC ----------
+test('el líder recibe un listado aparte (opcional) con lo que le falta a cada interesado', async () => {
+  // Base limpia de ciudad para no mezclar con los otros tests
+  const c = Number(db.prepare("INSERT INTO cities (name) VALUES ('Listado')").run().lastInsertRowid);
+  const t = Number(db.prepare("INSERT INTO teams (name) VALUES ('Sonido')").run().lastInsertRowid);
+  const l = user('lider-listado@test.es', 'leader', [c]);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(l, t);
+  const nueva = (name, self = {}) => Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,self_bases1,self_bases2,self_gc)
+    VALUES (?,?,?,?,?,24,?,?,?)`).run(name, `${name.toLowerCase().replace(/\W/g, '')}@x.es`, '600111222', c, t, +!!self.b1, +!!self.b2, +!!self.gc).lastInsertRowid);
+
+  const nada = nueva('Nada Nadal');            // no tiene nada
+  const soloB1 = nueva('Solo Uno');            // solo Bases 1
+  const b1gc = nueva('Uno Gece', { gc: true }); // Bases 1 en PCO + dice tener GC
+  const listo = nueva('Listo Sin Gece');       // Bases 1 y 2, sin GC → se le llama, pero se indica
+  const sinFicha = nueva('Sin Ficha');         // no existe en Planning Center
+  const todo = nueva('Lo Tiene Todo');         // completo
+  const tenure = nueva('Sin Tiempo');          // aún sin antigüedad: no entra en ninguna lista
+
+  const por = { [nada]: { bases1: false, bases2: false, gc: false }, [soloB1]: { bases1: true, bases2: false, gc: false }, [b1gc]: { bases1: true, bases2: false, gc: false },
+    [listo]: { bases1: true, bases2: true, gc: false }, [todo]: { bases1: true, bases2: true, gc: true } };
+  const fx = createFlow({
+    pco: { findPerson: async () => person, getCourseStatus: async () => course, addNote: async () => {} },
+    mail: { sendMail: async (m) => sent.push(m) },
+  });
+  reset();
+  for (const id of [nada, soloB1, b1gc, listo, todo]) { course = por[id]; person = { id: String(id), url: `https://pco/${id}` }; await fx.process(id); }
+  person = null; await fx.process(sinFicha);
+  db.prepare("UPDATE applications SET status = 'no_apto_aun' WHERE id = ?").run(tenure);
+
+  reset();
+  await fx.sendDigests();
+  const mails = to('lider-listado@test.es');
+  assert.equal(mails.length, 1, 'un solo email por equipo');
+  const html = mails[0].html;
+  const [antes, pendientes] = html.split('Interesados que aún no tienen Bases 1, Bases 2 o GC');
+  assert.ok(pendientes, 'existe el listado aparte');
+  // Lista de llamar: solo quien ya tiene Bases 1 y 2 (con la nota de que aún no tiene GC, si es el caso)
+  assert.match(antes, /Llamar esta semana/);
+  assert.match(antes, /Listo Sin Gece[^]*?Le falta: GC/);
+  assert.match(antes, /Lo Tiene Todo/);
+  assert.doesNotMatch(antes.split('Lo Tiene Todo')[1] || '', /Le falta/, 'quien lo tiene todo no lleva nota');
+  assert.doesNotMatch(antes, /Nada Nadal|Solo Uno|Uno Gece|Sin Ficha/);
+  // Listado opcional
+  assert.match(pendientes, /seguimiento opcional/);
+  assert.match(pendientes, /Es opcional/);
+  assert.match(pendientes, /Nada Nadal[^]*?Le falta: Bases 1, Bases 2 y GC/);
+  assert.match(pendientes, /Solo Uno[^]*?Le falta: Bases 2 y GC/);
+  assert.match(pendientes, /Uno Gece[^]*?Le falta: Bases 2\b(?! y GC)/, 'lo que dijo tener (GC) cuenta como hecho');
+  assert.match(pendientes, /Sin Ficha[^]*?no tiene ficha en Planning Center/);
+  assert.doesNotMatch(pendientes, /Lo Tiene Todo|Listo Sin Gece|Sin Tiempo/);
+});
+
+test('quien no tenía ficha y volvió a apuntarse no sale dos veces en el listado', async () => {
+  const c = db.prepare("SELECT id FROM cities WHERE name = 'Listado'").get().id;
+  const t = db.prepare("SELECT id FROM teams WHERE name = 'Sonido'").get().id;
+  const ins = (status) => Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status) VALUES ('Vuelve Otra Vez','vuelve@x.es','600111222',?,?,24,?)`).run(c, t, status).lastInsertRowid);
+  const vieja = ins('sin_pco');
+  const nueva = ins('listo');
+  reset();
+  await createFlow({ pco: {}, mail: { sendMail: async (m) => sent.push(m) } }).sendDigests();
+  const html = to('lider-listado@test.es')[0].html;
+  const [antes, pendientes] = html.split('Interesados que aún no tienen Bases 1, Bases 2 o GC');
+  assert.match(antes, /Vuelve Otra Vez/, 'sale en la lista de llamar');
+  assert.doesNotMatch(pendientes || '', /Vuelve Otra Vez/, 'y ya no como «sin ficha»');
+  assert.ok(vieja < nueva);
+});
+
+test('si nadie está pendiente, el email no incluye el listado opcional', async () => {
+  const c = Number(db.prepare("INSERT INTO cities (name) VALUES ('Solo llamar')").run().lastInsertRowid);
+  const t = Number(db.prepare("INSERT INTO teams (name) VALUES ('Video')").run().lastInsertRowid);
+  const l = user('lider-solo@test.es', 'leader', [c]);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(l, t);
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status) VALUES ('Solo Llamar','sl@x.es','600111222',?,?,24,'listo')`).run(c, t);
+  reset();
+  await flow.sendDigests();
+  const html = to('lider-solo@test.es')[0].html;
+  assert.match(html, /Llamar esta semana/);
+  assert.doesNotMatch(html, /seguimiento opcional/);
+});

@@ -100,7 +100,8 @@ test('resumen semanal: el líder ve listos y pendientes; al hacer Bases 2 pasan 
   await flow.sendDigests();
   const digest = to('lider@test.es')[0];
   assert.ok(digest);
-  assert.match(digest.html, /por hacer Bases 2/);
+  assert.match(digest.html, /aún no tienen Bases 1, Bases 2 o GC \(seguimiento opcional\)/);
+  assert.match(digest.html, /Le falta: Bases 2/);
   assert.match(digest.html, /Llamar esta semana/);
   assert.equal(to('bases@test.es').length, 1);
   reset(); course = { bases1: true, bases2: true, gc: true };
