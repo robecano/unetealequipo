@@ -115,3 +115,19 @@ test('las imágenes de las áreas incluidas en el proyecto se aceptan al editar'
   assert.equal(img.status, 200);
   assert.equal(img.headers.get('content-type'), 'image/jpeg');
 });
+
+test('todas las fotos que referencia el seed existen en el proyecto y solo IT queda con emoji', () => {
+  const root = path.join(__dirname, '..', 'public');
+  const conFoto = AREAS.filter((a) => a.image);
+  assert.equal(conFoto.length, 11);
+  for (const a of conFoto) assert.ok(fs.existsSync(path.join(root, a.image)), `falta ${a.image}`);
+  assert.deepEqual(AREAS.filter((a) => !a.image).map((a) => a.name), ['IT']);
+});
+
+test('el seed rellena la foto de un área que no la tenía, sin pisar una ya elegida', () => {
+  db.prepare("UPDATE teams SET image_url = '' WHERE parent_id IS NULL AND name = 'Kids'").run();
+  db.prepare("UPDATE teams SET image_url = '/uploads/mia.png' WHERE parent_id IS NULL AND name = 'Sisterhood'").run();
+  seed();
+  assert.equal(db.prepare("SELECT image_url u FROM teams WHERE parent_id IS NULL AND name = 'Kids'").get().u, '/img/areas/kids.jpg');
+  assert.equal(db.prepare("SELECT image_url u FROM teams WHERE parent_id IS NULL AND name = 'Sisterhood'").get().u, '/uploads/mia.png');
+});
