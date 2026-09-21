@@ -149,3 +149,7 @@ section[id],#form,#done{scroll-margin-top:84px}
 details summary{cursor:pointer;color:var(--muted);margin:6px 0}
 code{background:var(--bg2);border:1px solid var(--line);border-radius:6px;padding:1px 5px;font-size:12px}
 .pill{margin-left:8px}
+
+.warn-mini{margin:4px 0;padding:4px 8px;border-radius:8px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#fde68a;font-size:12px;line-height:1.35;max-width:260px}
+.yn>span a{margin-left:6px;font-size:13px;font-weight:600;color:#a5b4fc;text-decoration:none;border-bottom:1px dotted #a5b4fc;white-space:nowrap}
+.yn>span a:hover{color:#fff;border-color:#fff}

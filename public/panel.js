@@ -56,28 +56,34 @@ async function applicationsView(box) {
   const q = h('input', { type: 'search', placeholder: 'Buscar nombre, email, teléfono…' });
   const st = h('select', {}, h('option', { value: '' }, 'Todos los estados'), ...Object.entries(STATUS).map(([k, v]) => h('option', { value: k }, v)));
   const body = h('div');
+  // Voluntarios y líderes pueden quitar personas de su lista; aquí se ven las quitadas (para volver a ponerlas)
+  const hasList = ['bases', 'gc', 'leader'].includes(me.role);
+  const view = h('select', {}, h('option', { value: '' }, me.role === 'leader' ? 'Mi listado' : 'En mi lista'), h('option', { value: '1' }, 'Quitadas'));
   // Descarga en CSV con los mismos filtros que estás viendo (estado y búsqueda)
   const exportLink = h('a', { class: 'mini export', download: '' }, '⬇ Exportar CSV');
   const setExport = (n) => {
-    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}`;
+    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}&removed=${hasList ? view.value : ''}`;
     exportLink.textContent = `⬇ Exportar CSV (${n})`;
   };
   const load = guard(async () => {
-    const rows = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}`);
+    const rows = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}&removed=${hasList ? view.value : ''}`);
+    const quitadas = hasList && view.value === '1';
     setExport(rows.length);
+    const quitar = (a, quitadas, quitarTxt = 'Quitar de mi lista', volverTxt = 'Volver a mi lista') => act(a.id, { removed: !quitadas }, quitadas ? volverTxt : quitarTxt);
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
     body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
       h('thead', {}, h('tr', {}, ['Persona', 'Equipo', 'Estado', 'B1', 'GC', 'B2', 'Vol. Bases', 'Vol. GC', 'Acciones'].map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map((a) => h('tr', {},
-        h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
+        h('td', {}, h('b', {}, a.name), a.needs_bases && a.bases_form_before ? h('div', { class: 'warn-mini' }, '⚠ Ya rellenó el formulario de Bases anteriormente pero no fue contactado') : null, h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null),
         course(a.pco_bases1, a.self_bases1), course(a.pco_gc, a.self_gc), course(a.pco_bases2, a.self_bases2),
         h('td', {}, a.bases_name || a.bases_email || h('span', { class: 'muted' }, '–'), a.bases_phone ? h('div', {}, h('a', { href: `tel:${a.bases_phone}` }, a.bases_phone)) : null, a.bases_email ? h('div', { class: 'muted' }, a.bases_status.replace('_', ' ')) : null),
         h('td', {}, a.gc_name || a.gc_email || h('span', { class: 'muted' }, a.needs_gc ? 'sin asignar' : '–'), a.gc_phone ? h('div', {}, h('a', { href: `tel:${a.gc_phone}` }, a.gc_phone)) : null, a.gc_email ? h('div', { class: 'muted' }, a.gc_status.replace('_', ' ')) : null),
         h('td', {}, h('div', { class: 'acts' },
-          me.role === 'gc' ? [act(a.id, { gc_status: 'contactado' }, 'Contactado'), act(a.id, { gc_status: 'registrado' }, 'Ya está en un GC')]
-          : me.role === 'bases' ? [act(a.id, { bases_status: 'contactado' }, 'Contactado'), act(a.id, { bases_status: 'registrado' }, 'Registrado en Bases 2')] : [
+          me.role === 'gc' ? [!quitadas ? act(a.id, { gc_status: 'contactado' }, 'Contactado') : null, !quitadas ? act(a.id, { gc_status: 'registrado' }, 'Ya está en un GC') : null, quitar(a, quitadas)]
+          : me.role === 'bases' ? [!quitadas ? act(a.id, { bases_status: 'contactado' }, 'Contactado') : null, !quitadas ? act(a.id, { bases_status: 'registrado' }, 'Ya está apuntado en Bases') : null, quitar(a, quitadas)] : [
+            me.role === 'leader' && (quitadas || ['pendiente_bases', 'sin_pco'].includes(a.status)) ? quitar(a, quitadas, 'Quitar de mi listado', 'Volver a mi listado') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Llamé') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Confirmar') : null,
@@ -92,7 +98,8 @@ async function applicationsView(box) {
   });
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, ['bases', 'gc'].includes(me.role) ? null : st, exportLink), body);
+  view.addEventListener('change', load);
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, ['bases', 'gc'].includes(me.role) ? null : st, hasList ? view : null, exportLink), body);
   load();
 }
 

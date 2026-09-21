@@ -23,6 +23,12 @@ Escaparate de los equipos de Hillsong España y formulario para apuntarse a serv
 ## Equipos: áreas y subequipos
 La web muestra **12 áreas** (tarjetas cuadradas con foto o emoji); al pulsar una se abre un desplegable con sus **subequipos**, cada uno con su descripción y su botón «Quiero unirme». En el formulario se elige un subequipo. Los líderes se asignan a subequipos. Un área sin subequipos se comporta como un equipo. `node scripts/seed-equipos.js [--ciudades]` carga el listado completo (idempotente, no pisa lo editado).
 
+## Listas de seguimiento (quitar personas)
+- **Voluntario de Bases:** la persona sale de su lista si rellena el formulario de Bases (`Registro Bases 1/2 …`, Planning Center People → Formularios) **después** de apuntarse a servir, si completa Bases, si pulsa **«Ya está apuntado en Bases»** o si se quita a mano con **«Quitar de mi lista»**. Si ya había rellenado el formulario **antes** de apuntarse, aparece con «⚠ Ya rellenó el formulario de Bases anteriormente pero no fue contactado» y se queda hasta quitarla a mano.
+- **Voluntario de GC:** sale cuando Planning Center detecta que ya está en un GC (campo «GC Asignado»), con **«Ya está en un GC»** o **«Quitar de mi lista»**.
+- **Líder de equipo:** puede **quitar del listado** a quien aún no lo tiene todo (**«Quitar de mi listado»**); deja de recibirlo en el resumen. Lo quitado se ve y se restaura en la vista «Quitadas».
+- Bases, GC y líderes pueden **exportar CSV** de su lista (y de sus quitadas).
+
 ## Emails
 Todos los textos se editan en **Panel → Emails** (solo admin): asunto, título y cuerpo con marcadores (`{{nombre}}`, `{{equipo}}`, `{{persona}}`…), condicionales (`{{#gc}}…{{/gc}}`), vista previa, email de prueba a tu correo y «Restaurar el original». No deja guardar un email al que le falte información imprescindible o con marcadores inexistentes. Los originales están en `src/email-templates.js`. El día y la hora del resumen semanal también se cambian ahí.
 

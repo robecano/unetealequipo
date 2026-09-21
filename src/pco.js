@@ -195,4 +195,27 @@ async function addNote(personId, text, categoryName) {
   return json.data.id;
 }
 
-module.exports = { PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey };
+// ---------- Formularios de Bases (Planning Center People → Formularios) ----------
+// «Registro Bases 1 …» y «Registro Bases 2 …» (una por ciudad). Se excluyen los de asistencia y los de Bases 3.
+const BASES_FORM = /^\s*Registro Bases [12]\b/i;
+let formCache = { at: 0, ids: null };
+
+async function basesFormIds() {
+  if (formCache.ids && Date.now() - formCache.at < 6 * 3600 * 1000) return formCache.ids;
+  const { data } = await getAll('/people/v2/forms', { per_page: 100 });
+  formCache = { at: Date.now(), ids: new Set(data.filter((f) => BASES_FORM.test(attrs(f).name || '') && !attrs(f).archived_at).map((f) => String(f.id))) };
+  return formCache.ids;
+}
+
+/** Envíos de la persona a los formularios de registro de Bases 1 y 2: [{ form_id, created_at }] (más recientes primero). */
+async function getBasesFormSubmissions(personId) {
+  const ids = await basesFormIds();
+  const { data } = await getAll(`/people/v2/people/${personId}/form_submissions`, { per_page: 100 });
+  return data
+    .map((d) => ({ form_id: String(d.relationships?.form?.data?.id || ''), created_at: attrs(d).created_at || '' }))
+    .filter((x) => ids.has(x.form_id))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+module.exports = {
+  getBasesFormSubmissions, BASES_FORM, PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey };

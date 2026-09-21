@@ -224,6 +224,10 @@ test('la web: «Cómo funciona» nombra Bases 1, GC y Bases 2 y el formulario pr
   assert.match(html, /<b>Bases 1, GC y Bases 2<\/b>/);
   assert.doesNotMatch(html, /<b>Bases 1 y 2<\/b>/);
   assert.match(html, /Cuando lo tengas todo, el líder del equipo te llama/);
-  const orden = [...html.matchAll(/class="yn"><span>[^<]*<\/span><label><input type="radio" name="(\w+)"/g)].map((m) => m[1]);
+  const orden = [...html.matchAll(/class="yn"><span>.*?<\/span><label><input type="radio" name="(\w+)"/g)].map((m) => m[1]);
+  assert.match(html, /¿Has hecho el curso gratuito Bases 1\? <a href="https:\/\/hillsong\.es\/bases"[^>]*>\+info<\/a>/);
+  assert.match(html, /¿Estás en un Grupo de Conexión\? <a href="https:\/\/hillsong\.es\/gruposdeconexion"[^>]*>\+info<\/a>/);
+  assert.match(html, /¿Has hecho el curso gratuito Bases 2\? <a href="https:\/\/hillsong\.es\/bases"[^>]*>\+info<\/a>/);
+  assert.equal((html.match(/target="_blank" rel="noopener">\+info/g) || []).length, 3, 'los enlaces abren en pestaña nueva');
   assert.deepEqual(orden, ['bases1', 'gc', 'bases2']);
 });

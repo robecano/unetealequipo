@@ -11,6 +11,8 @@ const OPEN = ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'];
 const LABEL = { bases1: 'Bases 1', bases2: 'Bases 2', gc: 'GC' };
 const CLAIM = { bases1: 'haber hecho Bases 1', bases2: 'haber hecho Bases 2', gc: 'tener un GC' };
 const joinEs = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} y ${a.at(-1)}`);
+const NOTA_FORM = 'Ya rellenó el formulario de Bases anteriormente pero no fue contactado';
+const iso = (sqliteDate) => `${String(sqliteDate).replace(' ', 'T')}Z`; // SQLite guarda «aaaa-mm-dd hh:mm:ss» en UTC
 const now = () => new Date().toISOString();
 const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString();
 
@@ -31,8 +33,8 @@ const leadersFor = (teamId, cityId) =>
 
 /** Cuántas personas tiene ahora pendientes un voluntario (para repartir de forma equilibrada). */
 const LOAD = {
-  bases: "SELECT COUNT(*) FROM applications a WHERE a.bases_user_id = u.id AND a.needs_bases = 1",
-  gc: "SELECT COUNT(*) FROM applications a WHERE a.gc_user_id = u.id AND a.needs_gc = 1 AND a.gc_status != 'registrado'",
+  bases: "SELECT COUNT(*) FROM applications a WHERE a.bases_user_id = u.id AND a.needs_bases = 1 AND a.bases_removed = 0",
+  gc: "SELECT COUNT(*) FROM applications a WHERE a.gc_user_id = u.id AND a.needs_gc = 1 AND a.gc_status != 'registrado' AND a.gc_removed = 0",
 };
 
 /** Voluntario (rol «bases» o «gc») de la ciudad con menos personas pendientes. */
@@ -51,13 +53,16 @@ function faltaDe(r) {
 /** Quién más va a contactar con la persona: solo los voluntarios que realmente tiene asignados (y a los que aún les toca). */
 function contactoDe(r) {
   if (r.status === 'sin_pco') return 'Aún sin ficha: ningún voluntario le contacta todavía';
-  const bases = r.needs_bases && r.bases_user_id;
-  const gc = r.needs_gc && r.gc_user_id;
+  const bases = r.needs_bases && r.bases_user_id && !r.bases_removed;
+  const gc = r.needs_gc && r.gc_user_id && !r.gc_removed;
   if (bases && gc) return 'También le contactarán un voluntario de Bases y otro de GC';
   if (bases) return 'También le contactará un voluntario de Bases';
   if (gc) return 'También le contactará un voluntario de GC';
   return '';
 }
+
+/** Datos de la persona para las listas de Bases: incluye el aviso si ya rellenó el formulario antes y no llegó a ser contactada. */
+const forBases = (a, pcoUrl) => ({ ...forTemplate(a, pcoUrl), nota: a.needs_bases && a.bases_form_before ? NOTA_FORM : '' });
 
 const forTemplate = (a, pcoUrl) => ({ name: a.name, email: a.email, phone: a.phone, city: a.city, team: a.team_name, pco_url: pcoUrl });
 
@@ -83,6 +88,16 @@ function createFlow({ pco, mail }) {
       console.error(`Email "${label}" falló:`, e.message);
     }
   };
+  /** Envíos de la persona a los formularios de Bases. Si Planning Center falla no se bloquea el flujo: solo se anota. */
+  async function safeForms(id, personId) {
+    try {
+      return (await pco.getBasesFormSubmissions?.(personId)) || [];
+    } catch (e) {
+      logEvent(id, null, 'pco_error', `Formularios de Bases: ${e.message}`);
+      return [];
+    }
+  }
+
   const alertAdmin = (id, subject, detail) => safeMail(id, `aviso admin: ${subject}`, emails.adminAlertEmail(subject, detail), config.adminNotifyEmail);
 
   /** Escribe las notas pendientes; si una falla, se reanuda por la que faltaba sin duplicar las anteriores. */
@@ -147,6 +162,10 @@ function createFlow({ pco, mail }) {
       return 'sin_pco';
     }
 
+    // ¿Rellenó ya el formulario de Bases 1 o 2? Si fue antes de apuntarse a servir, se avisa al voluntario de Bases en su lista.
+    const forms = await safeForms(id, person.id);
+    const createdIso = iso(a.created_at);
+
     // Si la persona dice que sí y en Planning Center no consta, se cree el formulario
     const declared = { bases1: !!a.self_bases1, bases2: !!a.self_bases2, gc: !!a.self_gc };
     const unverifiedKeys = Object.keys(LABEL).filter((k) => !course[k] && declared[k]);
@@ -164,6 +183,8 @@ function createFlow({ pco, mail }) {
       pco_gc: +course.gc,
       needs_gc: +needsGc,
       needs_bases: +needsBases,
+      bases_form_before: +(needsBases && forms.some((f) => f.created_at <= createdIso)),
+      bases_form_at: forms[0]?.created_at || null,
     });
     logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
 
@@ -184,7 +205,10 @@ function createFlow({ pco, mail }) {
     }
 
     await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: a, team, missing, assign: { bases: !!volunteers.bases, gc: !!volunteers.gc } }), a.email);
-    if (volunteers.bases) await safeMail(id, 'aviso al voluntario de Bases', emails.basesEmail({ items: [{ app: forTemplate(a, person.url) }], missing }), volunteers.bases.email);
+    if (volunteers.bases) {
+      const fresh = fullApp(id); // con las marcas recién calculadas
+      await safeMail(id, 'aviso al voluntario de Bases', emails.basesEmail({ items: [{ app: forBases(fresh, person.url) }], missing }), volunteers.bases.email);
+    }
     if (volunteers.gc) await safeMail(id, 'aviso al voluntario de GC', emails.gcEmail({ items: [{ app: forTemplate(a, person.url) }] }), volunteers.gc.email);
 
     if (!blocked.length) {
@@ -216,14 +240,25 @@ function createFlow({ pco, mail }) {
    * Si ya tienen Bases 1, Bases 2 y GC se avisa al líder; si acaban Bases 1 y les falta GC, se asigna un voluntario de GC.
    */
   async function recheckPending() {
-    const rows = db.prepare("SELECT id, status, pco_person_id, self_bases1, self_bases2, self_gc FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1 OR needs_bases = 1) AND pco_person_id IS NOT NULL").all();
+    const rows = db.prepare("SELECT id, status, created_at, pco_person_id, self_bases1, self_bases2, self_gc, bases_removed FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1 OR needs_bases = 1) AND pco_person_id IS NOT NULL").all();
     let promoted = 0;
     for (const r of rows) {
       try {
         const c = await pco.getCourseStatus(r.pco_person_id, { fields: config.fields, required: config.required });
         const has = (k) => !!c[k] || !!r['self_' + k];
         const needsGc = has('bases1') && !has('gc');
-        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, needs_gc=?, needs_bases=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, +needsGc, +(!has('bases1') || !has('bases2')), r.id);
+        const needsBases = !has('bases1') || !has('bases2');
+        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, needs_gc=?, needs_bases=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, +needsGc, +needsBases, r.id);
+        // Si rellenó el formulario de Bases DESPUÉS de apuntarse a servir, sale de la lista del voluntario de Bases
+        if (needsBases && !r.bases_removed) {
+          const forms = await safeForms(r.id, r.pco_person_id);
+          db.prepare('UPDATE applications SET bases_form_at = ? WHERE id = ?').run(forms[0]?.created_at || null, r.id);
+          const despues = forms.find((f) => f.created_at > iso(r.created_at));
+          if (despues) {
+            db.prepare('UPDATE applications SET bases_removed = 1, updated_at = ? WHERE id = ?').run(now(), r.id);
+            logEvent(r.id, null, 'bases_formulario', `Rellenó el formulario de Bases el ${despues.created_at.slice(0, 10)}: sale de la lista del voluntario de Bases`);
+          }
+        }
         if (needsGc) await ensureGcVolunteer(r.id);
         if (r.status === 'pendiente_bases' && BLOCKING.every(has)) {
           await markReady(r.id);
@@ -257,7 +292,7 @@ function createFlow({ pco, mail }) {
 
     for (const l of db.prepare("SELECT * FROM users WHERE role='leader' AND active=1").all()) {
       const myTeams = db.prepare(`SELECT t.id, ${TEAM_LABEL} AS name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id JOIN leader_teams lt ON lt.team_id = t.id WHERE lt.user_id = ?`).all(l.id);
-      const rows = scoped(l.id, ['pendiente_bases', 'sin_pco', 'listo', 'contactado', 'visito']);
+      const rows = scoped(l.id, ['pendiente_bases', 'sin_pco', 'listo', 'contactado', 'visito']).filter((r) => !r.leader_hidden); // lo que el líder quitó de su listado no se le vuelve a enviar
       for (const team of myTeams) {
         const mine = rows.filter((r) => r.team_id === team.id);
         const ready = mine.filter((r) => r.status === 'listo').map((r) => forTemplate(r));
@@ -270,15 +305,15 @@ function createFlow({ pco, mail }) {
     }
     for (const v of db.prepare("SELECT * FROM users WHERE role='bases' AND active=1").all()) {
       const items = scoped(v.id, ['pendiente_bases'])
-        .filter((r) => r.needs_bases && (r.bases_user_id === v.id || !r.bases_user_id) && r.bases_status !== 'registrado')
-        .map((r) => ({ app: forTemplate(r) }));
+        .filter((r) => r.needs_bases && !r.bases_removed && (r.bases_user_id === v.id || !r.bases_user_id) && r.bases_status !== 'registrado')
+        .map((r) => ({ app: forBases(r) }));
       if (!items.length) continue;
       await deliver(v.email, emails.basesEmail({ items, digest: true }), 'Resumen Bases');
     }
     // Voluntarios de GC: personas con Bases 1 que aún no están en un Grupo de Conexión
     for (const v of db.prepare("SELECT * FROM users WHERE role='gc' AND active=1").all()) {
       const items = scoped(v.id, ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'])
-        .filter((r) => r.needs_gc && (r.gc_user_id === v.id || !r.gc_user_id) && r.gc_status !== 'registrado')
+        .filter((r) => r.needs_gc && !r.gc_removed && (r.gc_user_id === v.id || !r.gc_user_id) && r.gc_status !== 'registrado')
         .map((r) => ({ app: forTemplate(r) }));
       if (!items.length) continue;
       await deliver(v.email, emails.gcEmail({ items, digest: true }), 'Resumen GC');

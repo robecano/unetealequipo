@@ -143,6 +143,17 @@ if (!db.prepare("SELECT 1 FROM pragma_table_info('applications') WHERE name = 'n
   db.exec('ALTER TABLE applications ADD COLUMN needs_bases INTEGER NOT NULL DEFAULT 0');
   db.exec("UPDATE applications SET needs_bases = 1 WHERE status = 'pendiente_bases'");
 }
+// Listas de seguimiento: quitar a una persona de la lista de un voluntario o de un líder (a mano o porque ya rellenó el formulario de Bases),
+// y aviso de que ya había rellenado el formulario de Bases antes de apuntarse a servir (y no llegó a ser contactada).
+for (const col of [
+  'bases_removed INTEGER NOT NULL DEFAULT 0',
+  'gc_removed INTEGER NOT NULL DEFAULT 0',
+  'leader_hidden INTEGER NOT NULL DEFAULT 0',
+  'bases_form_before INTEGER NOT NULL DEFAULT 0',
+  'bases_form_at TEXT',
+]) {
+  try { db.exec(`ALTER TABLE applications ADD COLUMN ${col}`); } catch { /* ya existe */ }
+}
 // Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
   key TEXT PRIMARY KEY,
