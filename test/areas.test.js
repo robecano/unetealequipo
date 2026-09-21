@@ -130,3 +130,25 @@ test('el seed rellena la foto de un área que no la tenía, sin pisar una ya ele
   assert.equal(db.prepare("SELECT image_url u FROM teams WHERE parent_id IS NULL AND name = 'Kids'").get().u, '/img/areas/kids.jpg');
   assert.equal(db.prepare("SELECT image_url u FROM teams WHERE parent_id IS NULL AND name = 'Sisterhood'").get().u, '/uploads/mia.png');
 });
+
+test('el aviso de organización aparece en Comunidades, Sisterhood, Jóvenes y CityCare, y llega a sus subequipos y al email', async () => {
+  const tree = publicTree();
+  for (const n of ['Comunidades', 'Sisterhood', 'Jóvenes', 'CityCare']) {
+    const a = tree.find((x) => x.name === n);
+    assert.match(a.notice, /^El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos\.$/, n);
+    assert.equal(a.teams[0].area_notice, a.notice);
+  }
+  for (const n of ['Kids', 'Domingo', 'IT']) assert.equal(tree.find((x) => x.name === n).notice, '');
+  const { fullApp } = require('../src/flow');
+  const emails = require('../src/emails');
+  const men = db.prepare("SELECT id FROM teams WHERE name = 'Men'").get().id;
+  const city = db.prepare('SELECT id FROM cities LIMIT 1').get().id;
+  const id = Number(db.prepare("INSERT INTO applications (name,email,phone,city_id,team_id) VALUES ('Luis','l@x.es','600111222',?,?)").run(city, men).lastInsertRowid);
+  const a = fullApp(id);
+  assert.match(a.area_notice, /organización y gestión/);
+  const mail = emails.applicantEmail({ app: a, team: { name: a.team_name, notice: a.team_notice }, missing: [] });
+  assert.match(mail.html, /organización y gestión de las actividades y eventos/);
+  const kids = db.prepare("SELECT id FROM teams WHERE name = 'Voltage'").get().id;
+  const id2 = Number(db.prepare("INSERT INTO applications (name,email,phone,city_id,team_id) VALUES ('Eva','e@x.es','600111222',?,?)").run(city, kids).lastInsertRowid);
+  assert.ok(!fullApp(id2).area_notice);
+});

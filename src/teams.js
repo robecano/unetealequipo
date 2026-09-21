@@ -12,7 +12,7 @@ const SELECTABLE = `(t.active = 1 AND (
 /** «Área › Subequipo», o solo el nombre si coinciden (Kids › Kids) o no hay área. */
 const TEAM_LABEL = `(CASE WHEN p.id IS NULL OR p.name = t.name THEN t.name ELSE p.name || ' › ' || t.name END)`;
 
-const pick = (t) => ({ id: t.id, name: t.name, description: t.description, min_months: t.min_months, notice: t.notice });
+const pick = (t, area) => ({ id: t.id, name: t.name, description: t.description, min_months: t.min_months, notice: t.notice, area_notice: area && area.id !== t.id ? area.notice : '' });
 
 /** Árbol para la web pública: áreas activas con sus subequipos activos. */
 function publicTree() {
@@ -21,8 +21,8 @@ function publicTree() {
   return areas.map((a) => {
     const children = kids.filter((k) => k.parent_id === a.id);
     return {
-      id: a.id, name: a.name, description: a.description, icon: a.icon, image_url: a.image_url,
-      teams: children.length ? children.map(pick) : [pick(a)],
+      id: a.id, name: a.name, description: a.description, icon: a.icon, image_url: a.image_url, notice: a.notice,
+      teams: children.length ? children.map((c) => pick(c, a)) : [pick(a)],
     };
   });
 }

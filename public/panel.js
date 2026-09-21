@@ -146,7 +146,7 @@ async function teamsView(box) {
       mediaBox,
       f('sort', 'Orden', 'number'),
       f('min_months', 'Meses mínimos en la iglesia (0 = sin mínimo)', 'number'),
-      h('label', {}, 'Aviso para quien se apunta (p. ej. entrevista previa)', h('textarea', { name: 'notice', rows: 2 }, t.notice || '')),
+      h('label', {}, 'Aviso para quien se apunta (p. ej. entrevista previa). En un área se muestra al abrirla', h('textarea', { name: 'notice', rows: 2 }, t.notice || '')),
       h('label', { class: 'checks' }, h('input', { type: 'checkbox', name: 'active', checked: t.active !== 0 }), 'Visible en la web'),
       h('div', { class: 'acts' }, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Guardar'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editor.replaceChildren() }, 'Cancelar'))));
     sync();

@@ -37,6 +37,7 @@ function applicantEmail({ app, team, missing, notFoundInPco, tenureShort }) {
   } else {
     parts.push(p('Tienes todos los pasos hechos. El líder del equipo te llamará esta semana y te invitará a visitar el equipo el próximo domingo.'));
   }
+  if (app.area_notice && !tenureShort) parts.push(p(`<i>${esc(app.area_notice)}</i>`));
   if (team.notice && !tenureShort) parts.push(p(`<i>${esc(team.notice)}</i>`));
   return { subject: `Tu solicitud para servir en ${team.name}`, html: layout('¡Gracias por apuntarte!', parts.join('')), text: `Gracias por apuntarte a ${team.name}.` };
 }

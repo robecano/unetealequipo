@@ -16,7 +16,7 @@ const inDays = (n) => new Date(Date.now() + n * 86400000).toISOString();
 /** Ficha completa (con nombres de equipo y ciudad) lista para plantillas. */
 function fullApp(id) {
   return db
-    .prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, t.notice AS team_notice, t.min_months, c.name AS city
+    .prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, t.notice AS team_notice, p.notice AS area_notice, t.min_months, c.name AS city
               FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id
               JOIN cities c ON c.id = a.city_id WHERE a.id = ?`)
     .get(id);

@@ -117,3 +117,6 @@ dialog{max-height:88vh;overflow:auto}
 .li-sub{padding-left:22px;font-size:14px}.li-sub b{font-weight:500}
 .add-sub{margin-top:10px}
 .checks{max-height:260px;overflow:auto}
+
+.info{background:rgba(124,92,255,.12);border:1px solid rgba(124,92,255,.4);color:#d8d0ff;border-radius:12px;padding:12px 14px;margin:12px 0 0;font-size:14px}
+dialog .info{color:#d8d0ff}

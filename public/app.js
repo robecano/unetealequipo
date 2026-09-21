@@ -50,6 +50,7 @@ function openArea(area) {
     area.image_url ? h('img', { class: 'dlg-img', src: area.image_url, alt: '' }) : h('div', { class: 'dlg-icon' }, area.icon || ''),
     h('h3', {}, area.name),
     h('p', {}, area.description),
+    area.teams.length > 1 && area.notice ? h('p', { class: 'info' }, area.notice) : null,
     area.teams.length > 1 ? h('p', { class: 'dlg-count' }, `${plural(area.teams.length)} · elige uno para saber más`) : null,
     list);
   $('#dlg').showModal();
@@ -62,6 +63,7 @@ function updateNotice() {
   const tenure = $('[name=tenure]').value;
   const box = $('#team-notice');
   const lines = [];
+  if (team?.area_notice) lines.push(team.area_notice);
   if (team?.notice) lines.push(team.notice);
   if (team && tenure !== '' && Number(tenure) < team.min_months) lines.push('Por ahora no llevas el tiempo mínimo en la iglesia para este equipo. Puedes apuntarte igualmente y te contaremos las opciones.');
   box.textContent = lines.join(' ');

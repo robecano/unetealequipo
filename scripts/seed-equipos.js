@@ -3,6 +3,8 @@
 const { db } = require('../src/db');
 
 const KIDS_NOTE = 'Este equipo requiere una entrevista larga antes de empezar. Te contactaremos para explicarte el proceso.';
+// Aviso de las áreas donde el servicio consiste en ayudar a organizar y gestionar (no en la actividad en sí)
+const ORGANIZA_NOTE = 'El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos.';
 const PASTORAL_NOTE = 'Requiere una entrevista y acompañamiento previo del equipo pastoral.';
 
 // [nombre, descripción, [subequipos: nombre, descripción, meses mínimos, aviso]]
@@ -34,17 +36,17 @@ const AREAS = [
     ['Sala de Familias', 'Espacio para bebés de 0 a 2 años junto a sus padres.', 12, KIDS_NOTE],
     ['Kids', 'Comunidad para niños de 3 a 8 años.', 12, KIDS_NOTE],
     ['Voltage', 'Comunidad para niños de 8 a 12 años.', 12, KIDS_NOTE] ] },
-  { name: 'Comunidades', image: '/img/areas/comunidades.jpg', icon: '👥', desc: 'Espacios para conectar, pertenecer y crecer juntos entre semana.', teams: [
+  { name: 'Comunidades', notice: ORGANIZA_NOTE, image: '/img/areas/comunidades.jpg', icon: '👥', desc: 'Espacios para conectar, pertenecer y crecer juntos entre semana.', teams: [
     ['Grupos de Conexión', 'Comunidad, estudio y crecimiento en grupos pequeños.'],
     ['Faith Mission Partner', 'Comunidad de personas generosas que impulsan la misión de la iglesia.'],
     ['Empresarios', 'Comunidad para empresarios, emprendedores, autónomos, profesionales y directivos.'],
     ['Men', 'Comunidad de hombres.'],
     ['+30', 'Comunidad para personas solteras mayores de 30 años.'],
     ['Generación +', 'Comunidad para personas mayores de 60 años.'] ] },
-  { name: 'Sisterhood', image: '/img/areas/sisterhood.jpg', icon: '🌸', desc: 'Comunidad de mujeres de todas las generaciones.', teams: [
+  { name: 'Sisterhood', notice: ORGANIZA_NOTE, image: '/img/areas/sisterhood.jpg', icon: '🌸', desc: 'Comunidad de mujeres de todas las generaciones.', teams: [
     ['Comunidad Sisterhood', 'Actividades y espacios de conexión dentro de la comunidad de mujeres.'],
     ['Madres Unidas para Orar', 'Madres que oran juntas por sus hijos y sus familias.'] ] },
-  { name: 'Jóvenes', image: '/img/areas/jovenes.jpg', icon: '⚡', desc: 'Comunidades para adolescentes y jóvenes, incluyendo Grupos de Conexión y eventos.', teams: [
+  { name: 'Jóvenes', notice: ORGANIZA_NOTE, image: '/img/areas/jovenes.jpg', icon: '⚡', desc: 'Comunidades para adolescentes y jóvenes, incluyendo Grupos de Conexión y eventos.', teams: [
     ['Youth', 'Comunidad para adolescentes de 12 a 18 años.'],
     ['PowerHouse', 'Comunidad para jóvenes de 18 a 30 años.'] ] },
   { name: 'Cuidado Pastoral', image: '/img/areas/cuidado-pastoral.jpg', icon: '💛', desc: 'Acompañamiento espiritual en diferentes momentos de la vida.', teams: [
@@ -52,7 +54,7 @@ const AREAS = [
     ['Prematrimonial', 'Preparación y formación antes del matrimonio.', 24, PASTORAL_NOTE],
     ['Ceremonias', 'Acompañamiento en bodas y otras ceremonias.', 24, PASTORAL_NOTE],
     ['Intercesión', 'Oración entre semana por personas y necesidades específicas.', 24, PASTORAL_NOTE] ] },
-  { name: 'CityCare', image: '/img/areas/citycare.jpg', icon: '🏙️', desc: 'Engloba la acción social de nuestra iglesia.', teams: [
+  { name: 'CityCare', notice: ORGANIZA_NOTE, image: '/img/areas/citycare.jpg', icon: '🏙️', desc: 'Engloba la acción social de nuestra iglesia.', teams: [
     ['Ayuda Integral', 'Apoyo práctico y seguimiento a familias en dificultad, incluyendo Kilo de Amor.'],
     ['Refuerzo Escolar', 'Apoyo educativo para niños.'],
     ['KitCat', 'Cursos de catalán e integración social y cultural.'],
@@ -74,13 +76,17 @@ const AREAS = [
 function seed({ cities = false } = {}) {
   const findArea = db.prepare('SELECT id FROM teams WHERE parent_id IS NULL AND name = ?');
   const findSub = db.prepare('SELECT id FROM teams WHERE parent_id = ? AND name = ?');
-  const insArea = db.prepare('INSERT INTO teams (name, description, icon, image_url, sort) VALUES (?,?,?,?,?)');
+  const insArea = db.prepare('INSERT INTO teams (name, description, icon, image_url, notice, sort) VALUES (?,?,?,?,?,?)');
   const insSub = db.prepare('INSERT INTO teams (parent_id, name, description, min_months, notice, sort) VALUES (?,?,?,?,?,?)');
   let created = 0;
   AREAS.forEach((a, i) => {
     let area = findArea.get(a.name);
-    if (!area) { area = { id: Number(insArea.run(a.name, a.desc, a.icon, a.image || '', i + 1).lastInsertRowid) }; created++; }
-    else if (a.image) db.prepare("UPDATE teams SET image_url = ? WHERE id = ? AND image_url = ''").run(a.image, area.id);
+    if (!area) { area = { id: Number(insArea.run(a.name, a.desc, a.icon, a.image || '', a.notice || '', i + 1).lastInsertRowid) }; created++; }
+    else {
+      // Solo rellena lo que está vacío: no pisa lo que se haya editado en el panel
+      if (a.image) db.prepare("UPDATE teams SET image_url = ? WHERE id = ? AND image_url = ''").run(a.image, area.id);
+      if (a.notice) db.prepare("UPDATE teams SET notice = ? WHERE id = ? AND notice = ''").run(a.notice, area.id);
+    }
     a.teams.forEach(([name, desc, months = 0, notice = ''], j) => {
       if (!findSub.get(area.id, name)) { insSub.run(area.id, name, desc, months, notice, j + 1); created++; }
     });
