@@ -108,6 +108,7 @@ if (!db.prepare("SELECT 1 FROM pragma_table_info('teams') WHERE name = 'parent_i
 }
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_team_name ON teams (COALESCE(parent_id, 0), name)');
 
+try { db.exec("ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''"); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN notes_done INTEGER NOT NULL DEFAULT 0'); } catch { /* ya existe */ }
 
 const getSetting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;

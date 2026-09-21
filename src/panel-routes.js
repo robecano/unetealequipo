@@ -25,34 +25,85 @@ const str = (v, max = 300) => (typeof v === 'string' ? v.trim().slice(0, max) : 
 const flag = (v) => (v === false || v === 0 || v === '0' ? 0 : 1);
 const ids = (arr) => [...new Set((Array.isArray(arr) ? arr : []).map(Number).filter(Number.isInteger))];
 
-/** Solicitudes visibles: admin todas; líder las de sus equipos y ciudades; Bases las de sus ciudades pendientes de Bases 2. */
-function visibleApplications(user, { status, q } = {}) {
-  const where = [];
-  const params = [];
+/** Condición SQL de lo que puede ver cada rol: admin todo; líder sus equipos y ciudades; Bases sus ciudades pendientes de Bases 2. */
+function scopeOf(user) {
   if (user.role === 'leader') {
-    where.push('a.team_id IN (SELECT team_id FROM leader_teams WHERE user_id = ?)', 'a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)');
-    params.push(user.id, user.id);
-  } else if (user.role === 'bases') {
-    where.push('a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', "a.status IN ('pendiente_bases')");
-    params.push(user.id);
+    return { where: ['a.team_id IN (SELECT team_id FROM leader_teams WHERE user_id = ?)', 'a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)'], params: [user.id, user.id] };
   }
-  if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
-  if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
-  return db.prepare(`SELECT a.id, a.created_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
-                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
-                       ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email
-                     FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
-                     LEFT JOIN users bu ON bu.id = a.bases_user_id
-                     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT 500`).all(...params);
+  if (user.role === 'bases') {
+    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', "a.status IN ('pendiente_bases')"], params: [user.id] };
+  }
+  return { where: [], params: [] };
 }
 
+function visibleApplications(user, { status, q } = {}, limit = 500) {
+  const { where, params } = scopeOf(user);
+  if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
+  if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
+  return db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
+                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
+                       ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email, bu.phone AS bases_phone
+                     FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
+                     LEFT JOIN users bu ON bu.id = a.bases_user_id
+                     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
+}
+
+/** ¿Puede este usuario ver/tocar esta solicitud? Consulta directa por id (no depende del límite de la lista). */
 function canTouch(user, id) {
-  return visibleApplications(user).some((a) => a.id === id);
+  const { where, params } = scopeOf(user);
+  return !!db.prepare(`SELECT 1 FROM applications a WHERE a.id = ? ${where.map((w) => `AND ${w}`).join(' ')}`).get(id, ...params);
+}
+
+const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', sin_pco: 'Sin ficha (Bases 1)', pendiente_bases: 'Pendiente de Bases 2', listo: 'Para llamar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
+const TENURE_LABEL = { 0: 'Menos de 6 meses', 6: '6-12 meses', 12: '1-2 años', 24: 'Más de 2 años' };
+/** Fecha en hora local (APP_TZ) y formato dd/mm/aaaa hh:mm. SQLite guarda «aaaa-mm-dd hh:mm:ss» en UTC; el resto, ISO. */
+function localDate(v, withTime = true) {
+  if (!v) return '';
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(v) ? v : `${String(v).replace(' ', 'T')}Z`);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const o = { timeZone: config.tz, day: '2-digit', month: '2-digit', year: 'numeric', ...(withTime ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } : {}) };
+  return new Intl.DateTimeFormat('es-ES', o).format(d).replace(',', '');
+}
+const yn = (v) => (v === null || v === undefined ? '' : v ? 'Sí' : 'No');
+
+/** Una celda de CSV: se entrecomilla si hace falta y se neutralizan las fórmulas (=, +, -, @) que Excel ejecutaría. Los teléfonos se dejan tal cual. */
+function csvCell(v) {
+  let s = v === null || v === undefined ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s) && !/^[+\d][\d\s().-]*$/.test(s)) s = `'${s}`;
+  return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function applicationsCsv(rows) {
+  const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
+    'Bases 1 (PCO)', 'Bases 2 (PCO)', 'GC (PCO)', 'Bases 1 (dijo)', 'Bases 2 (dijo)', 'GC (dijo)', 'Ficha Planning Center',
+    'Voluntario Bases', 'Email voluntario', 'Teléfono voluntario', 'Estado en Bases', 'Próximo seguimiento', 'Última actualización'];
+  const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
+    yn(a.pco_bases1), yn(a.pco_bases2), yn(a.pco_gc), yn(a.self_bases1), yn(a.self_bases2), yn(a.self_gc),
+    a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
+    a.bases_name, a.bases_email, a.bases_phone, a.bases_user_id ? String(a.bases_status).replace('_', ' ') : '', localDate(a.followup_at, false), localDate(a.updated_at)]);
+  // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
+  return '\ufeff' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
+}
+
+/** Teléfono opcional: si se escribe, debe parecer un teléfono. */
+function phoneOf(v) {
+  const t = str(v, 30);
+  if (!t) return '';
+  if (!/^[+\d][\d\s().-]*$/.test(t) || t.replace(/\D/g, '').length < 8) throw bad('El teléfono no es válido');
+  return t;
 }
 
 module.exports = function panelRoutes({ flow, pco }) {
   const r = express.Router();
   r.use(requireAuth);
+
+  r.get('/applications.csv', (req, res) => {
+    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60) }, 20000);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="solicitudes-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(applicationsCsv(rows));
+  });
 
   r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60) })));
 
@@ -60,6 +111,16 @@ module.exports = function panelRoutes({ flow, pco }) {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     res.json({ application: fullApp(id), events: db.prepare('SELECT * FROM application_events WHERE application_id = ? ORDER BY id DESC').all(id) });
+  });
+
+  /** Borra una solicitud y su historial. Solo administración y líderes (dentro de lo suyo); los voluntarios de Bases no. */
+  r.delete('/applications/:id', (req, res) => {
+    if (req.user.role === 'bases') throw bad('Los voluntarios de Bases no pueden borrar solicitudes', 403);
+    const id = Number(req.params.id);
+    if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    db.prepare('DELETE FROM applications WHERE id = ?').run(id); // el historial se borra en cascada
+    console.log(`Solicitud ${id} borrada por ${req.user.email}`);
+    res.json({ ok: true });
   });
 
   /** Líderes (y admin): estado del seguimiento. Voluntarios de Bases: solo su estado de contacto. */
@@ -167,7 +228,7 @@ module.exports = function panelRoutes({ flow, pco }) {
     city_ids: db.prepare('SELECT city_id FROM user_cities WHERE user_id = ?').all(u.id).map((x) => x.city_id),
     team_ids: db.prepare('SELECT team_id FROM leader_teams WHERE user_id = ?').all(u.id).map((x) => x.team_id),
   });
-  admin.get('/users', (_req, res) => res.json(db.prepare("SELECT id,email,name,role,active FROM users ORDER BY role, name, email").all().map(userRow)));
+  admin.get('/users', (_req, res) => res.json(db.prepare("SELECT id,email,name,role,phone,active FROM users ORDER BY role, name, email").all().map(userRow)));
   function saveUser(id, b) {
     tx(() => {
       db.exec(`DELETE FROM user_cities WHERE user_id = ${id}; DELETE FROM leader_teams WHERE user_id = ${id}`);
@@ -181,7 +242,8 @@ module.exports = function panelRoutes({ flow, pco }) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Email no válido');
     if (!['leader', 'bases', 'admin'].includes(b.role)) throw bad('Rol no válido');
     let id;
-    try { id = Number(db.prepare('INSERT INTO users (email,name,role) VALUES (?,?,?)').run(email, str(b.name, 100), b.role).lastInsertRowid); }
+    const phone = phoneOf(b.phone);
+    try { id = Number(db.prepare('INSERT INTO users (email,name,role,phone) VALUES (?,?,?,?)').run(email, str(b.name, 100), b.role, phone).lastInsertRowid); }
     catch { throw bad('Ese email ya existe'); }
     saveUser(id, b);
     res.json({ id });
@@ -192,7 +254,7 @@ module.exports = function panelRoutes({ flow, pco }) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!u) throw bad('No encontrado', 404);
     if (id === req.user.id && b.active === false) throw bad('No puedes desactivarte a ti mismo');
-    db.prepare('UPDATE users SET name=?, active=? WHERE id=?').run(str(b.name, 100), flag(b.active ?? 1), id);
+    db.prepare('UPDATE users SET name=?, phone=?, active=? WHERE id=?').run(str(b.name, 100), phoneOf(b.phone), flag(b.active ?? 1), id);
     saveUser(id, { ...b, role: u.role });
     res.json({ ok: true });
   });

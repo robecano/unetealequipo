@@ -14,6 +14,9 @@ Escaparate de los equipos de Hillsong España y formulario para apuntarse a serv
 ## Equipos: áreas y subequipos
 La web muestra **12 áreas** (tarjetas cuadradas con foto o emoji); al pulsar una se abre un desplegable con sus **subequipos**, cada uno con su descripción y su botón «Quiero unirme». En el formulario se elige un subequipo. Los líderes se asignan a subequipos. Un área sin subequipos se comporta como un equipo. `node scripts/seed-equipos.js [--ciudades]` carga el listado completo (idempotente, no pisa lo editado).
 
+## Panel (`/panel`) — solicitudes
+Cada solicitud tiene **Borrar** (administración y líderes, solo dentro de lo suyo; los voluntarios de Bases no) y la lista se puede **exportar a CSV** con el estado y la búsqueda que estés viendo (separador `;`, UTF-8 con BOM para Excel, fechas en hora local). Líderes y voluntarios de Bases tienen **teléfono**, que el admin edita en «Líderes y Bases» y que se muestra en las solicitudes.
+
 ## Panel (`/panel`)
 Acceso por email + contraseña común (`PANEL_PASSWORD`). Roles: **admin**, **líder** (sus equipos y ciudades) y **voluntario de Bases** (sus ciudades). El admin gestiona equipos, ciudades y personas. Cada equipo lleva un **emoji** o una **imagen** (se sube desde el panel, PNG/JPG/WebP hasta 3 MB, y se guarda en `/app/data/uploads`); si hay imagen se muestra la imagen.
 

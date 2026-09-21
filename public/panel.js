@@ -56,8 +56,15 @@ async function applicationsView(box) {
   const q = h('input', { type: 'search', placeholder: 'Buscar nombre, email, teléfono…' });
   const st = h('select', {}, h('option', { value: '' }, 'Todos los estados'), ...Object.entries(STATUS).map(([k, v]) => h('option', { value: k }, v)));
   const body = h('div');
+  // Descarga en CSV con los mismos filtros que estás viendo (estado y búsqueda)
+  const exportLink = h('a', { class: 'mini export', download: '' }, '⬇ Exportar CSV');
+  const setExport = (n) => {
+    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}`;
+    exportLink.textContent = `⬇ Exportar CSV (${n})`;
+  };
   const load = guard(async () => {
     const rows = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}`);
+    setExport(rows.length);
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
     body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
       h('thead', {}, h('tr', {}, ['Persona', 'Equipo', 'Estado', 'B1', 'B2', 'GC', 'Bases', 'Acciones'].map((t) => h('th', {}, t)))),
@@ -66,19 +73,24 @@ async function applicationsView(box) {
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null),
         course(a.pco_bases1, a.self_bases1), course(a.pco_bases2, a.self_bases2), course(a.pco_gc, a.self_gc),
-        h('td', {}, a.bases_name || a.bases_email || h('span', { class: 'muted' }, '–'), a.bases_email ? h('div', { class: 'muted' }, a.bases_status.replace('_', ' ')) : null),
+        h('td', {}, a.bases_name || a.bases_email || h('span', { class: 'muted' }, '–'), a.bases_phone ? h('div', {}, h('a', { href: `tel:${a.bases_phone}` }, a.bases_phone)) : null, a.bases_email ? h('div', { class: 'muted' }, a.bases_status.replace('_', ' ')) : null),
         h('td', {}, h('div', { class: 'acts' },
           me.role === 'bases' ? [act(a.id, { bases_status: 'contactado' }, 'Contactado'), act(a.id, { bases_status: 'registrado' }, 'Registrado en Bases 2')] : [
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Llamé') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
             ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Confirmar') : null,
             ['listo', 'contactado', 'visito', 'pendiente_bases'].includes(a.status) ? act(a.id, { status: 'no_continua' }, 'No continúa') : null,
+            h('button', { class: 'danger', onclick: guard(async () => {
+              if (!confirm(`¿Borrar la solicitud de ${a.name}?\n\nSe elimina también su historial en esta web. No se puede deshacer.\n(La nota en su perfil de Planning Center no se borra.)`)) return;
+              await api(`/panel/applications/${a.id}`, { method: 'DELETE' });
+              load();
+            }) }, 'Borrar'),
             me.role === 'admin' && ['recibida', 'sin_pco'].includes(a.status) ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null])))))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
   });
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, me.role === 'bases' ? null : st), body);
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, me.role === 'bases' ? null : st, exportLink), body);
   load();
 }
 
@@ -181,12 +193,13 @@ async function usersView(box) {
     editor.replaceChildren(h('form', { class: 'card form', onsubmit: guard(async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
-      const body = { email: f.get('email'), name: f.get('name'), role: u.id ? u.role : roleSel.value, active: e.target.active.checked, city_ids: f.getAll('city_ids'), team_ids: f.getAll('team_ids') };
+      const body = { email: f.get('email'), name: f.get('name'), phone: f.get('phone'), role: u.id ? u.role : roleSel.value, active: e.target.active.checked, city_ids: f.getAll('city_ids'), team_ids: f.getAll('team_ids') };
       await api(u.id ? `/panel/admin/users/${u.id}` : '/panel/admin/users', { method: u.id ? 'PUT' : 'POST', body });
       usersView(box);
     }) },
       h('h3', {}, u.id ? `Editar ${u.email}` : 'Nueva persona'),
       h('div', { class: 'row2' }, h('label', {}, 'Nombre', h('input', { name: 'name', value: u.name || '' })), h('label', {}, 'Email', h('input', { name: 'email', type: 'email', value: u.email || '', required: true, readonly: !!u.id }))),
+      h('label', {}, 'Teléfono (para que puedan contactarle)', h('input', { name: 'phone', type: 'tel', value: u.phone || '', placeholder: '+34 600 000 000', autocomplete: 'off' })),
       h('label', {}, 'Rol', roleSel),
       h('div', {}, h('p', { class: 'muted' }, 'Ciudades'), checks('city_ids', cities, u.city_ids)), teamBox,
       h('label', { class: 'checks' }, h('input', { type: 'checkbox', name: 'active', checked: !!u.active }), 'Activo'),
@@ -198,7 +211,7 @@ async function usersView(box) {
   const teamName = (id) => selectable.find((t) => t.id === id)?.name;
   box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Añadir líder o voluntario de Bases')), editor,
     h('div', { class: 'card' }, users.filter((u) => u.role !== 'admin').map((u) => h('div', { class: 'li' },
-      h('div', {}, h('b', {}, u.name || u.email), u.active ? '' : ' (inactivo)', h('div', { class: 'muted' }, `${ROLE[u.role]} · ${u.email}`), h('div', { class: 'muted' }, [u.city_ids.map(cityName).join(', '), u.role === 'leader' ? u.team_ids.map(teamName).join(', ') : ''].filter(Boolean).join(' — '))),
+      h('div', {}, h('b', {}, u.name || u.email), u.active ? '' : ' (inactivo)', h('div', { class: 'muted' }, `${ROLE[u.role]} · ${u.email}`), u.phone ? h('div', {}, '📞 ', h('a', { href: `tel:${u.phone}` }, u.phone)) : h('div', { class: 'muted' }, 'Sin teléfono'), h('div', { class: 'muted' }, [u.city_ids.map(cityName).join(', '), u.role === 'leader' ? u.team_ids.map(teamName).join(', ') : ''].filter(Boolean).join(' — '))),
       h('button', { class: 'mini', onclick: () => edit(u) }, 'Editar')))));
 }
 
