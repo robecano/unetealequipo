@@ -64,7 +64,7 @@ const AREAS = [
     ['Bases', 'Cursos gratuitos, los domingos o sábados, sobre fundamentos de fe, iglesia y próximos pasos.'],
     ['Escuela de Tarde', 'Cursos bíblicos y teológicos en profundidad cada dos martes, solo en algunos campus.'],
     ['Estudios de Grupos de Conexión', 'Creación de estudios bíblicos para los Grupos de Conexión.'] ] },
-  { name: 'IT', icon: '💻', desc: 'Tecnología y herramientas digitales para la vida de la iglesia.', teams: [
+  { name: 'IT', image: '/img/areas/it.jpg', icon: '💻', desc: 'Tecnología y herramientas digitales para la vida de la iglesia.', teams: [
     ['Sistemas Informáticos', 'Soporte y gestión de sistemas tecnológicos.'],
     ['Web', 'Desarrollo y mantenimiento de páginas web.'],
     ['Formularios y Registros', 'Formularios, inscripciones y procesos digitales.'],
