@@ -61,7 +61,7 @@ const AREAS = [
     ['Invade las Calles', 'Ayuda y acompañamiento a personas sin hogar.'],
     ['Soñamos Juntos', 'Experiencias especiales para niños en situaciones difíciles.'],
     ['Campañas Especiales', 'Acciones solidarias ante necesidades concretas, como Vuelta al Cole, Navidad o situaciones de emergencia.'] ] },
-  { name: 'Formaciones', image: '/img/areas/formaciones.jpg', icon: '📖', desc: 'Espacios para crecer en Biblia, fe y liderazgo.', teams: [
+  { name: 'Formaciones', notice: ORGANIZA_NOTE, image: '/img/areas/formaciones.jpg', icon: '📖', desc: 'Espacios para crecer en Biblia, fe y liderazgo.', teams: [
     ['Academia de Liderazgo', 'Formación teológica, ministerial y de liderazgo durante seis meses.'],
     ['Bases', 'Cursos gratuitos, los domingos o sábados, sobre fundamentos de fe, iglesia y próximos pasos.'],
     ['Escuela de Tarde', 'Cursos bíblicos y teológicos en profundidad cada dos martes, solo en algunos campus.'],

@@ -28,6 +28,7 @@ const apply = (name, teamId, extra = {}) => {
   const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,self_bases2) VALUES (?,?,?,?,?,24,?,?,?,?)`)
     .run(name, `${name.toLowerCase().replace(/\W/g, '')}@x.es`, extra.phone ?? '+34 600 111 222', extra.city ?? city, teamId, extra.status ?? 'listo', extra.pco ?? '55', 1, 1).lastInsertRowid);
   db.prepare("INSERT INTO application_events (application_id, event) VALUES (?, 'recibida')").run(id);
+  if ((extra.status ?? 'listo') === 'pendiente_bases') db.prepare('UPDATE applications SET needs_bases = 1 WHERE id = ?').run(id); // como lo deja el flujo real
   return id;
 };
 
@@ -100,12 +101,12 @@ test('CSV: cabeceras de descarga, BOM UTF-8, separador ; y columnas en español'
   const [head, ...rows] = bytes.toString('utf8').replace(/^\ufeff/, '').trim().split('\r\n');
   assert.ok(head.startsWith('ID;Fecha;Nombre;Email;Teléfono;Ciudad;Equipo;Estado;'));
   assert.ok(rows.length >= 2);
-  assert.ok(rows.some((l) => l.includes('Con Voluntario') && l.includes('Bea Bases') && l.includes('699 000 111') && l.includes('Pendiente de Bases 2')));
+  assert.ok(rows.some((l) => l.includes('Con Voluntario') && l.includes('Bea Bases') && l.includes('699 000 111') && l.includes('Pendiente de Bases o GC')));
 });
 
 test('CSV: respeta el estado y la búsqueda, y cada rol solo exporta lo suyo', async () => {
   const soloPend = (await (await req('admin', 'GET', '/api/panel/applications.csv?status=pendiente_bases')).text()).trim().split('\r\n');
-  assert.ok(soloPend.slice(1).every((l) => l.includes('Pendiente de Bases 2')));
+  assert.ok(soloPend.slice(1).every((l) => l.includes('Pendiente de Bases o GC')));
   const q = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Voluntario')).text()).trim().split('\r\n');
   assert.equal(q.length, 2);
   const leader = await (await req('leader', 'GET', '/api/panel/applications.csv')).text();

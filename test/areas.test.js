@@ -131,9 +131,9 @@ test('el seed rellena la foto de un área que no la tenía, sin pisar una ya ele
   assert.equal(db.prepare("SELECT image_url u FROM teams WHERE parent_id IS NULL AND name = 'Sisterhood'").get().u, '/uploads/mia.png');
 });
 
-test('el aviso de organización aparece en Comunidades, Sisterhood, Jóvenes y CityCare, y llega a sus subequipos y al email', async () => {
+test('el aviso de organización aparece en Comunidades, Sisterhood, Jóvenes, CityCare y Formaciones, y llega a sus subequipos y al email', async () => {
   const tree = publicTree();
-  for (const n of ['Comunidades', 'Sisterhood', 'Jóvenes', 'CityCare']) {
+  for (const n of ['Comunidades', 'Sisterhood', 'Jóvenes', 'CityCare', 'Formaciones']) {
     const a = tree.find((x) => x.name === n);
     assert.match(a.notice, /^El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos\.$/, n);
     assert.equal(a.teams[0].area_notice, a.notice);

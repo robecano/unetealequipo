@@ -66,7 +66,7 @@ test('no existe en PCO: email para registrarse en Bases 1', async () => {
   reset(); person = null;
   const id = apply(av);
   assert.equal(await flow.process(id), 'sin_pco');
-  assert.match(to('ana@x.es')[0].html, /bases1/);
+  assert.match(to('ana@x.es')[0].html, /hillsong\.es\/bases\b/);
   assert.equal(to('lider@test.es').length, 0);
 });
 
@@ -89,7 +89,7 @@ test('falta Bases 2: se asigna voluntario de Bases y el líder no recibe aviso i
   assert.equal(await flow.process(id), 'pendiente_bases');
   const row = db.prepare('SELECT * FROM applications WHERE id=?').get(id);
   assert.equal(row.bases_user_id, bases);
-  assert.match(to('ana@x.es')[0].html, /bases2/);
+  assert.match(to('ana@x.es')[0].html, /hillsong\.es\/bases\b/);
   assert.match(to('ana@x.es')[0].html, /Grupo de Conexión/);
   assert.equal(to('bases@test.es').length, 1);
   assert.equal(to('lider@test.es').length, 0);

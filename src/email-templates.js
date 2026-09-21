@@ -23,9 +23,10 @@ const VARS = {
   equipo: { desc: 'Equipo elegido (Área › Subequipo)' },
   ciudad: { desc: 'Ciudad' },
   url_panel: { desc: 'Enlace al panel' },
-  enlace_bases1: { desc: 'Enlace para registrarse en Bases 1' },
-  enlace_bases2: { desc: 'Enlace para registrarse en Bases 2' },
-  enlace_gc: { desc: 'Enlace de Grupos de Conexión' },
+  enlace_bases: { desc: 'Enlace de Bases (hillsong.es/bases)' },
+  enlace_bases1: { desc: 'Enlace de Bases 1 (igual que el de Bases salvo que se configure otro)' },
+  enlace_bases2: { desc: 'Enlace de Bases 2 (igual que el de Bases salvo que se configure otro)' },
+  enlace_gc: { desc: 'Enlace de Grupos de Conexión (hillsong.es/gc)' },
   faltan: { desc: 'Lista de lo que le falta (Bases 1, Bases 2, GC) con sus enlaces', block: true },
   aviso_area: { desc: 'Aviso del área (p. ej. organización y gestión)', block: true },
   aviso_equipo: { desc: 'Aviso del subequipo (p. ej. entrevista previa)', block: true },
@@ -40,7 +41,6 @@ const VARS = {
 const FLAGS = {
   bases: 'Se le ha asignado un voluntario de Bases',
   gc: 'Se le ha asignado un voluntario de GC',
-  sin_gc: 'Todavía no está en un GC',
   sin_bases1: 'Le falta Bases 1',
   sin_bases2: 'Le falta Bases 2',
 };
@@ -61,30 +61,30 @@ const TEMPLATES = {
   applicant_no_pco: {
     group: 'persona', title: 'No aparece en Planning Center', to: 'La persona que se apunta',
     when: 'En cuanto se apunta y no hay ninguna ficha con su email o teléfono en Planning Center. Se le pide hacer Bases 1.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'enlace_bases1', 'aviso_area', 'aviso_equipo'], flags: [], required: ['enlace_bases1'],
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'enlace_bases', 'aviso_area', 'aviso_equipo'], flags: [], required: ['enlace_bases'],
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nNo hemos encontrado tu ficha en nuestro sistema. El primer paso es hacer **Bases 1**; en cuanto lo tengas, vuelve a apuntarte y seguiremos.\n\n[[Registrarme en Bases 1|{{enlace_bases1}}]]\n\n${NOTICES}`,
+    body: `${HELLO}\n\nNo hemos encontrado tu ficha en nuestro sistema. El primer paso es hacer **Bases 1**; en cuanto lo tengas, vuelve a apuntarte y seguiremos.\n\n[[Registrarme en Bases|{{enlace_bases}}]]\n\n${NOTICES}`,
   },
   applicant_missing: {
-    group: 'persona', title: 'Le falta Bases 1 o Bases 2', to: 'La persona que se apunta',
-    when: 'En cuanto se apunta y le falta Bases 1 o Bases 2 (según Planning Center y lo que dijo en el formulario).',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'faltan', 'enlace_bases1', 'enlace_bases2', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['bases', 'gc'], required: ['faltan'],
+    group: 'persona', title: 'Le falta Bases 1, Bases 2 o GC', to: 'La persona que se apunta',
+    when: 'En cuanto se apunta y le falta alguno de los tres (según Planning Center y lo que dijo en el formulario).',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'faltan', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['bases', 'gc'], required: ['faltan'],
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nPara poder servir necesitas completar estos pasos:\n\n{{faltan}}\n\n{{#bases}}Un voluntario de Bases de tu ciudad se pondrá en contacto contigo para informarte y ayudarte a registrarte.{{/bases}}\n\n{{#gc}}Un voluntario de Grupos de Conexión de tu ciudad también te llamará para ayudarte a encontrar tu GC.{{/gc}}\n\nCuando termines, el líder del equipo te llamará.\n\n${NOTICES}`,
+    body: `${HELLO}\n\nPara poder servir necesitas completar estos pasos:\n\n{{faltan}}\n\n{{#bases}}Un voluntario de Bases de tu ciudad te llamará para invitarte a apuntarte a Bases ({{enlace_bases}}) y contarte cómo funciona.{{/bases}}\n\n{{#gc}}Un voluntario de Grupos de Conexión de tu ciudad te llamará para invitarte a apuntarte a un GC ({{enlace_gc}}) y contarte qué son.{{/gc}}\n\nCuando lo tengas todo, el líder del equipo te llamará.\n\n${NOTICES}`,
   },
   applicant_ready: {
-    group: 'persona', title: 'Lo tiene todo hecho (Bases 1 y 2)', to: 'La persona que se apunta',
-    when: 'En cuanto se apunta y ya tiene Bases 1 y Bases 2. El líder recibe su aviso a la vez.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['gc'], required: [],
+    group: 'persona', title: 'Lo tiene todo hecho (Bases 1, Bases 2 y GC)', to: 'La persona que se apunta',
+    when: 'En cuanto se apunta y ya tiene Bases 1, Bases 2 y GC. El líder recibe su aviso a la vez.',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'aviso_area', 'aviso_equipo'], flags: [], required: [],
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nTienes todos los pasos hechos. El líder del equipo te llamará esta semana y te invitará a visitar el equipo el próximo domingo.\n\n{{#gc}}Todavía no estás en un Grupo de Conexión: un voluntario de GC te llamará para ayudarte a encontrar el tuyo ({{enlace_gc}}).{{/gc}}\n\n${NOTICES}`,
+    body: `${HELLO}\n\nTienes todos los pasos hechos. El líder del equipo te llamará esta semana y te invitará a visitar el equipo el próximo domingo.\n\n${NOTICES}`,
   },
   leader_ready: {
     group: 'lider', title: 'Persona lista para llamar', to: 'Los líderes de ese equipo y ciudad',
-    when: 'En cuanto alguien con Bases 1 y 2 se apunta a su equipo. También cuando una persona pendiente completa Bases 2 (se comprueba con el resumen semanal).',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'persona', 'sin_verificar', 'url_panel'], flags: ['sin_gc'], required: ['persona'],
+    when: 'En cuanto alguien con Bases 1, Bases 2 y GC se apunta a su equipo. También cuando una persona pendiente completa lo que le faltaba (se comprueba con el resumen semanal). Si a alguien le falta algo, le llega en el listado opcional del resumen semanal.',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'persona', 'sin_verificar', 'url_panel'], flags: [], required: ['persona'],
     subject: 'Para llamar esta semana: {{nombre_completo}} ({{equipo}})', heading: 'Nueva persona para tu equipo: {{equipo}}',
-    body: `Esta persona ha hecho Bases 2 y quiere servir en **{{equipo}}**:\n\n{{persona}}\n\n{{sin_verificar}}\n\n{{#sin_gc}}Todavía no está en un Grupo de Conexión; un voluntario de GC le está ayudando.{{/sin_gc}}\n\n**Qué debes hacer:** llámala **esta semana** e invítala a visitar el equipo **este domingo**. La semana siguiente haz una llamada de seguimiento para consolidar que ya es parte del equipo.\n\n${FOOT}`,
+    body: `Esta persona tiene Bases 1, Bases 2 y GC y quiere servir en **{{equipo}}**:\n\n{{persona}}\n\n{{sin_verificar}}\n\n**Qué debes hacer:** llámala **esta semana** e invítala a visitar el equipo **este domingo**. La semana siguiente haz una llamada de seguimiento para consolidar que ya es parte del equipo.\n\n${FOOT}`,
   },
   leader_digest: {
     group: 'lider', title: 'Resumen semanal', to: 'Cada líder, un email por equipo',
@@ -95,31 +95,31 @@ const TEMPLATES = {
   },
   bases_assigned: {
     group: 'bases', title: 'Persona asignada a un voluntario de Bases', to: 'El voluntario de Bases asignado (reparto entre los de su ciudad)',
-    when: 'En cuanto alguien se apunta sin Bases 1 o sin Bases 2.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'personas', 'enlace_bases1', 'enlace_bases2', 'url_panel'], flags: ['sin_bases1', 'sin_bases2'], required: ['personas'],
+    when: 'En cuanto alguien se apunta sin Bases 1 o sin Bases 2. Se encarga de llamarle para invitarle a apuntarse a Bases.',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'personas', 'enlace_bases', 'url_panel'], flags: ['sin_bases1', 'sin_bases2'], required: ['personas'],
     subject: 'Nueva persona para Bases: {{nombre_completo}}', heading: 'Seguimiento de Bases',
-    body: `Se te ha asignado a esta persona:\n\n{{personas}}\n\n{{#sin_bases1}}Todavía no ha hecho **Bases 1**: ayúdale a registrarse en {{enlace_bases1}}.{{/sin_bases1}}\n\n{{#sin_bases2}}Llámala para informarle y ayúdale a registrarse en **Bases 2**: {{enlace_bases2}}{{/sin_bases2}}\n\n${FOOT}`,
+    body: `Se te ha asignado a esta persona, que quiere servir en **{{equipo}}** y todavía no ha completado Bases:\n\n{{personas}}\n\nLlámala para invitarla a apuntarse a Bases: {{enlace_bases}}\n\nSi quieres, cuéntale cómo funciona (horarios, agenda…). {{#sin_bases1}}Le falta **Bases 1**. {{/sin_bases1}}{{#sin_bases2}}Le falta **Bases 2**.{{/sin_bases2}}\n\n${FOOT}`,
   },
   bases_digest: {
     group: 'bases', title: 'Resumen semanal de Bases', to: 'Cada voluntario de Bases',
     when: 'Una vez por semana. Solo si tiene personas pendientes.',
-    vars: ['personas', 'enlace_bases1', 'enlace_bases2', 'url_panel'], flags: [], required: ['personas'],
+    vars: ['personas', 'enlace_bases', 'url_panel'], flags: [], required: ['personas'],
     subject: 'Pendientes de Bases esta semana', heading: 'Seguimiento de Bases',
-    body: `Estas personas siguen pendientes de completar Bases:\n\n{{personas}}\n\nLlámalas para informarles y ayúdales a registrarse: Bases 1 ({{enlace_bases1}}) y Bases 2 ({{enlace_bases2}}).\n\n${FOOT}`,
+    body: `Estas personas siguen sin completar Bases:\n\n{{personas}}\n\nLlámalas para invitarlas a apuntarse a Bases: {{enlace_bases}}\n\nSi quieres, cuéntales cómo funciona (horarios, agenda…).\n\n${FOOT}`,
   },
   gc_assigned: {
     group: 'gc', title: 'Persona asignada a un voluntario de GC', to: 'El voluntario de GC asignado (reparto entre los de su ciudad)',
-    when: 'En cuanto alguien con Bases 1 se apunta sin estar en un Grupo de Conexión.',
+    when: 'En cuanto alguien con Bases 1 se apunta sin estar en un Grupo de Conexión (o cuando acaba Bases 1). Se encarga de llamarle para invitarle a apuntarse a un GC.',
     vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'personas', 'enlace_gc', 'url_panel'], flags: [], required: ['personas'],
     subject: 'Nueva persona para un GC: {{nombre_completo}}', heading: 'Seguimiento de Grupos de Conexión',
-    body: `Se te ha asignado a esta persona, que quiere servir en **{{equipo}}** y todavía no está en un Grupo de Conexión:\n\n{{personas}}\n\nLlámala e invítala a unirse a un GC de su zona: {{enlace_gc}}\n\n${FOOT}`,
+    body: `Se te ha asignado a esta persona, que quiere servir en **{{equipo}}** y todavía no está en un Grupo de Conexión:\n\n{{personas}}\n\nLlámala para invitarla a apuntarse a un GC: {{enlace_gc}}\n\nSi quieres, cuéntale qué son los Grupos de Conexión y cuál le queda más cerca.\n\n${FOOT}`,
   },
   gc_digest: {
     group: 'gc', title: 'Resumen semanal de GC', to: 'Cada voluntario de GC',
     when: 'Una vez por semana. Solo si tiene personas pendientes.',
     vars: ['personas', 'enlace_gc', 'url_panel'], flags: [], required: ['personas'],
     subject: 'Pendientes de Grupo de Conexión esta semana', heading: 'Seguimiento de Grupos de Conexión',
-    body: `Estas personas siguen sin estar en un Grupo de Conexión:\n\n{{personas}}\n\nLlámalas e invítalas a unirse a un GC: {{enlace_gc}}\n\n${FOOT}`,
+    body: `Estas personas siguen sin estar en un Grupo de Conexión:\n\n{{personas}}\n\nLlámalas para invitarlas a apuntarse a un GC: {{enlace_gc}}\n\n${FOOT}`,
   },
 };
 const GROUPS = { persona: 'A la persona que se apunta', lider: 'Al líder del equipo', bases: 'A los voluntarios de Bases', gc: 'A los voluntarios de GC' };
@@ -224,7 +224,7 @@ function htmlToText(html) {
 /** Genera el email de una plantilla. `override` permite previsualizar un texto sin guardarlo. */
 function render(key, ctx, override) {
   const t = { ...getTemplate(key), ...(override || {}) };
-  const vars = { url_panel: `${config.appUrl}/panel`, enlace_bases1: config.urls.bases1, enlace_bases2: config.urls.bases2, enlace_gc: config.urls.gc, ...(ctx.vars || {}) };
+  const vars = { url_panel: `${config.appUrl}/panel`, enlace_bases: config.urls.bases, enlace_bases1: config.urls.bases1, enlace_bases2: config.urls.bases2, enlace_gc: config.urls.gc, ...(ctx.vars || {}) };
   const html = layout(plain(t.heading, vars), bodyToHtml(t.body, { ...ctx, vars }));
   return { subject: plain(t.subject, vars), html, text: htmlToText(html), enabled: t.enabled !== false };
 }
@@ -237,7 +237,7 @@ function sampleContext(key) {
   const h = (t) => `<h2 style="font-size:16px">${t}</h2>`;
   return {
     vars: { nombre: 'Ana', nombre_completo: 'Ana Ruiz', equipo: 'Locales › Cafetería', ciudad: 'Madrid' },
-    flags: { bases: true, gc: true, sin_gc: true, sin_bases1: true, sin_bases2: true },
+    flags: { bases: true, gc: true, sin_bases1: true, sin_bases2: true },
     blocks: {
       faltan: `<ul style="line-height:1.7;margin:0 0 14px"><li><b>Bases 2</b> — <a href="${esc(config.urls.bases2)}">${esc(config.urls.bases2)}</a></li><li><b>un Grupo de Conexión (GC)</b> — <a href="${esc(config.urls.gc)}">${esc(config.urls.gc)}</a></li></ul>`,
       aviso_area: p('<i>El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos.</i>'),

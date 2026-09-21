@@ -138,6 +138,11 @@ for (const col of [
 ]) {
   try { db.exec(`ALTER TABLE applications ADD COLUMN ${col}`); } catch { /* ya existe */ }
 }
+// needs_bases = 1 mientras le falta Bases 1 o Bases 2 (lo que atiende un voluntario de Bases). Las filas anteriores se rellenan una sola vez.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('applications') WHERE name = 'needs_bases'").get()) {
+  db.exec('ALTER TABLE applications ADD COLUMN needs_bases INTEGER NOT NULL DEFAULT 0');
+  db.exec("UPDATE applications SET needs_bases = 1 WHERE status = 'pendiente_bases'");
+}
 // Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
   key TEXT PRIMARY KEY,

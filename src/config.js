@@ -42,9 +42,11 @@ const config = {
     gc: [],
   },
   urls: {
-    bases1: process.env.BASES1_URL || 'https://hillsong.es/bases1',
-    bases2: process.env.BASES2_URL || 'https://hillsong.es/bases2',
-    gc: process.env.GC_URL || 'https://hillsong.es',
+    // Bases y GC tienen una única página cada uno (hillsong.es/bases y hillsong.es/gc). BASES1_URL / BASES2_URL siguen aceptándose por compatibilidad.
+    bases: process.env.BASES_URL || 'https://hillsong.es/bases',
+    bases1: process.env.BASES1_URL || process.env.BASES_URL || 'https://hillsong.es/bases',
+    bases2: process.env.BASES2_URL || process.env.BASES_URL || 'https://hillsong.es/bases',
+    gc: process.env.GC_URL || 'https://hillsong.es/gc',
   },
   pco: {
     base: (process.env.PCO_BASE_URL || 'https://api.planningcenteronline.com').replace(/\/$/, ''),

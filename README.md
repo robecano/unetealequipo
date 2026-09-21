@@ -14,10 +14,10 @@ Escaparate de los equipos de Hillsong España y formulario para apuntarse a serv
    | ✗ | ✗ | ✗ | ✔ | | |
    | ✔ | ✗ | ✗ | ✔ | ✔ | |
    | ✔ | ✗ | ✔ | ✔ | | |
-   | ✔ | ✔ | ✗ | | ✔ | ✔ |
+   | ✔ | ✔ | ✗ | | ✔ | |
    | ✔ | ✔ | ✔ | | | ✔ |
 
-   Cada voluntario es de la ciudad de la persona (reparto equilibrado). Si no hay ninguno, se avisa al admin y no se le promete nada a la persona. El líder recibe el aviso en cuanto hay Bases 1 y 2 (llamar esta semana, invitar el domingo); seguimiento a los 7 días. Además, en su **resumen semanal** recibe un listado aparte y opcional con los interesados que aún no tienen Bases 1, Bases 2 o GC (o ni siquiera ficha en Planning Center), indicando qué le falta a cada uno.
+   Los voluntarios de **Bases** llaman a quien le falta algo de Bases para invitarle a apuntarse en `hillsong.es/bases`, y los de **GC** a quien le falta GC para invitarle en `hillsong.es/gc`; pueden contarle además cómo funciona (horarios, agenda, qué son los GC). Cada voluntario es de la ciudad de la persona (reparto equilibrado). Si no hay ninguno, se avisa al admin y no se le promete nada a la persona. **El líder solo recibe el aviso inmediato cuando la persona tiene Bases 1, Bases 2 y GC** (llamar esta semana, invitar el domingo); seguimiento a los 7 días. Si a alguien le falta algo, en su **resumen semanal** recibe un listado aparte y opcional con los interesados que aún no tienen Bases 1, Bases 2 o GC (o ni siquiera ficha en Planning Center), indicando qué le falta a cada uno.
 6. Cada semana (por defecto lunes 8:00) resumen por email a líderes y voluntarios de Bases, y se vuelve a comprobar en PCO a los pendientes: si ya tienen Bases 2 pasan a «para llamar».
 
 ## Equipos: áreas y subequipos

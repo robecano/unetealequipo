@@ -3,7 +3,8 @@ const { db, logEvent } = require('./db');
 const emails = require('./emails');
 const { TEAM_LABEL } = require('./teams');
 
-const BLOCKING = ['bases1', 'bases2']; // sin estos dos no se avisa al líder; GC se recomienda pero no bloquea
+// El líder solo recibe el aviso inmediato cuando la persona tiene Bases 1, Bases 2 y GC. Si le falta algo, le llega en el listado opcional del resumen semanal.
+const BLOCKING = ['bases1', 'bases2', 'gc'];
 const FOLLOWUP_DAYS = 7;
 const OPEN = ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'];
 
@@ -30,7 +31,7 @@ const leadersFor = (teamId, cityId) =>
 
 /** Cuántas personas tiene ahora pendientes un voluntario (para repartir de forma equilibrada). */
 const LOAD = {
-  bases: "SELECT COUNT(*) FROM applications a WHERE a.bases_user_id = u.id AND a.status = 'pendiente_bases'",
+  bases: "SELECT COUNT(*) FROM applications a WHERE a.bases_user_id = u.id AND a.needs_bases = 1",
   gc: "SELECT COUNT(*) FROM applications a WHERE a.gc_user_id = u.id AND a.needs_gc = 1 AND a.gc_status != 'registrado'",
 };
 
@@ -92,12 +93,12 @@ function createFlow({ pco, mail }) {
   async function markReady(id) {
     const a = fullApp(id);
     db.prepare("UPDATE applications SET status='listo', ready_at=?, followup_at=?, updated_at=? WHERE id=?").run(now(), inDays(FOLLOWUP_DAYS), now(), id);
-    logEvent(id, null, 'listo', 'Tiene Bases 2: pendiente de llamada del líder');
+    logEvent(id, null, 'listo', 'Tiene Bases 1, Bases 2 y GC: pendiente de llamada del líder');
     const leaders = leadersFor(a.team_id, a.city_id);
     if (!leaders.length) return alertAdmin(id, `Sin líder para ${a.team_name} en ${a.city}`, `${a.name} (${a.phone}) quiere servir en ${a.team_name} en ${a.city} y no hay ningún líder asignado.`);
     // Cursos que la persona dice tener y que no constan en Planning Center: se aceptan, pero el líder debe confirmarlos al llamar
     const unverified = Object.keys(LABEL).filter((k) => a['self_' + k] && !a['pco_' + k]).map((k) => LABEL[k]);
-    const msg = emails.leaderReadyEmail({ app: forTemplate(a), team: { name: a.team_name }, unverified, sinGc: !!a.needs_gc });
+    const msg = emails.leaderReadyEmail({ app: forTemplate(a), team: { name: a.team_name }, unverified });
     return safeMail(id, 'aviso al líder', msg, leaders.map((l) => l.email));
   }
 
@@ -151,6 +152,7 @@ function createFlow({ pco, mail }) {
       pco_bases2: +course.bases2,
       pco_gc: +course.gc,
       needs_gc: +needsGc,
+      needs_bases: +needsBases,
     });
     logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
 
@@ -187,18 +189,31 @@ function createFlow({ pco, mail }) {
     for (const { id } of ids) await process(id);
   }
 
+  /** Asigna un voluntario de GC (y le avisa) si a la persona ya le toca uno y todavía no lo tiene. */
+  async function ensureGcVolunteer(id) {
+    const a = fullApp(id);
+    if (!a || a.gc_user_id) return;
+    const vol = pickVolunteer('gc', a.city_id);
+    if (!vol) return;
+    db.prepare('UPDATE applications SET gc_user_id = ? WHERE id = ?').run(vol.id, id);
+    logEvent(id, null, 'gc_asignado', vol.email);
+    await safeMail(id, 'aviso al voluntario de GC', emails.gcEmail({ items: [{ app: forTemplate(a, a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : undefined) }] }), vol.email);
+  }
+
   /**
    * Vuelve a mirar en Planning Center a los pendientes (de Bases o de GC).
-   * Si ya tienen Bases 1 y 2 se avisa al líder; si ya están en un GC dejan de estar pendientes de un voluntario de GC.
+   * Si ya tienen Bases 1, Bases 2 y GC se avisa al líder; si acaban Bases 1 y les falta GC, se asigna un voluntario de GC.
    */
   async function recheckPending() {
-    const rows = db.prepare("SELECT id, status, pco_person_id, self_bases1, self_bases2, self_gc FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1) AND pco_person_id IS NOT NULL").all();
+    const rows = db.prepare("SELECT id, status, pco_person_id, self_bases1, self_bases2, self_gc FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1 OR needs_bases = 1) AND pco_person_id IS NOT NULL").all();
     let promoted = 0;
     for (const r of rows) {
       try {
         const c = await pco.getCourseStatus(r.pco_person_id, { fields: config.fields, required: config.required });
         const has = (k) => !!c[k] || !!r['self_' + k];
-        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, needs_gc=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, +(has('bases1') && !has('gc')), r.id);
+        const needsGc = has('bases1') && !has('gc');
+        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, needs_gc=?, needs_bases=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, +needsGc, +(!has('bases1') || !has('bases2')), r.id);
+        if (needsGc) await ensureGcVolunteer(r.id);
         if (r.status === 'pendiente_bases' && BLOCKING.every(has)) {
           await markReady(r.id);
           promoted++;
@@ -234,9 +249,8 @@ function createFlow({ pco, mail }) {
       const rows = scoped(l.id, ['pendiente_bases', 'sin_pco', 'listo', 'contactado', 'visito']);
       for (const team of myTeams) {
         const mine = rows.filter((r) => r.team_id === team.id);
-        const sinGc = (r) => ({ ...forTemplate(r), falta: r.needs_gc ? 'GC' : '' }); // ya se les puede llamar, pero aún no están en un GC
-        const ready = mine.filter((r) => r.status === 'listo').map(sinGc);
-        const followups = mine.filter((r) => ['contactado', 'visito'].includes(r.status) && r.followup_at && r.followup_at <= inDays(1)).map(sinGc);
+        const ready = mine.filter((r) => r.status === 'listo').map((r) => forTemplate(r));
+        const followups = mine.filter((r) => ['contactado', 'visito'].includes(r.status) && r.followup_at && r.followup_at <= inDays(1)).map((r) => forTemplate(r));
         // Listado aparte y opcional: interesados que aún no tienen Bases 1, Bases 2 o GC (o ni siquiera ficha en Planning Center)
         const pending = mine.filter((r) => ['pendiente_bases', 'sin_pco'].includes(r.status)).map((r) => ({ ...forTemplate(r), falta: faltaDe(r) }));
         if (!ready.length && !followups.length && !pending.length) continue;
@@ -245,7 +259,7 @@ function createFlow({ pco, mail }) {
     }
     for (const v of db.prepare("SELECT * FROM users WHERE role='bases' AND active=1").all()) {
       const items = scoped(v.id, ['pendiente_bases'])
-        .filter((r) => (r.bases_user_id === v.id || !r.bases_user_id) && r.bases_status !== 'registrado')
+        .filter((r) => r.needs_bases && (r.bases_user_id === v.id || !r.bases_user_id) && r.bases_status !== 'registrado')
         .map((r) => ({ app: forTemplate(r) }));
       if (!items.length) continue;
       await deliver(v.email, emails.basesEmail({ items, digest: true }), 'Resumen Bases');

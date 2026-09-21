@@ -64,7 +64,7 @@ const MATRIZ = [
   [0, 0, 0, true, false, false, 'no tiene nada → voluntario de Bases'],
   [1, 0, 0, true, true, false, 'solo Bases 1 → voluntario de GC y de Bases (para Bases 2)'],
   [1, 0, 1, true, false, false, 'Bases 1 y GC → voluntario de Bases (para Bases 2)'],
-  [1, 1, 0, false, true, true, 'Bases 1 y Bases 2 → voluntario de GC (y el líder ya puede llamar)'],
+  [1, 1, 0, false, true, false, 'Bases 1 y Bases 2 → voluntario de GC (el líder espera: le llegará en el listado opcional)'],
   [1, 1, 1, false, false, true, 'lo tiene todo → solo el líder'],
 ];
 for (const [b1, b2, g, wantBases, wantGc, wantLeader, label] of MATRIZ) {
@@ -82,27 +82,35 @@ for (const [b1, b2, g, wantBases, wantGc, wantLeader, label] of MATRIZ) {
     assert.equal(row.gc_user_id, wantGc ? gc : null);
     assert.equal(row.needs_gc, +wantGc);
     assert.equal(row.status, wantLeader ? 'listo' : 'pendiente_bases');
+    assert.equal(db.prepare('SELECT needs_bases n FROM applications WHERE id = ?').get(id).n, +wantBases, 'needs_bases');
   });
 }
 
 test('lo que la persona declara en el formulario cuenta como hecho para el reparto', async () => {
   reset(); course = { bases1: false, bases2: false, gc: false };
-  const id = apply({ b1: true, b2: true }); // dice Bases 1 y 2, en PCO no consta → líder + GC, sin Bases
+  const id = apply({ b1: true, b2: true }); // dice Bases 1 y 2, en PCO no consta → voluntario de GC, sin Bases y sin líder (falta GC)
   await flow.process(id);
   assert.equal(to('bases@test.es').length, 0);
   assert.equal(to('gc@test.es').length, 1);
+  assert.equal(to('lider@test.es').length, 0);
+  reset(); course = { bases1: false, bases2: false, gc: false };
+  const id2 = apply({ b1: true, b2: true, gc: true }); // dice los tres → líder, con el aviso de dato sin verificar
+  await flow.process(id2);
   assert.equal(to('lider@test.es').length, 1);
   assert.match(to('lider@test.es')[0].html, /Dato sin verificar/);
+  assert.equal(to('bases@test.es').length + to('gc@test.es').length, 0);
 });
 
-test('el email al líder avisa si todavía no está en un GC, y el de la persona lo promete solo si hay voluntario', async () => {
+test('la persona solo recibe la promesa del voluntario de GC si lo hay, y el líder no recibe nada mientras falte GC', async () => {
   reset(); course = { bases1: true, bases2: true, gc: false };
   await flow.process(apply());
-  assert.match(to('lider@test.es')[0].html, /Todavía no está en un Grupo de Conexión/);
-  assert.match(to('ana@x.es')[0].html, /voluntario de GC te llamará/);
+  assert.equal(to('lider@test.es').length, 0, 'el líder espera: le llegará en el listado opcional');
+  assert.match(to('ana@x.es')[0].html, /voluntario de Grupos de Conexión de tu ciudad te llamará/);
+  assert.match(to('ana@x.es')[0].html, /hillsong\.es\/gc/);
+  assert.match(to('gc@test.es')[0].html, /invitarla a apuntarse a un GC/);
   reset();
   await flow.process(apply({}, empty)); // ciudad sin voluntarios
-  assert.doesNotMatch(to('ana@x.es')[0].html, /voluntario de GC te llamará/);
+  assert.doesNotMatch(to('ana@x.es')[0].html, /voluntario de Grupos de Conexión de tu ciudad te llamará/);
   assert.ok(to('admin@test.es').some((m) => /Sin voluntario de GC en Sinvoluntarios/.test(m.subject)));
 });
 
@@ -141,16 +149,55 @@ test('cuando la persona ya está en un GC según Planning Center deja de estar p
   assert.equal(to('gc@test.es').length, 0);
 });
 
-test('pasa de Bases pendiente a lista para el líder al completar Bases 2 (y sigue esperando GC)', async () => {
+test('pasa a lista para el líder cuando completa Bases 1, Bases 2 y GC; mientras falte algo sigue pendiente', async () => {
   reset(); course = { bases1: true, bases2: false, gc: false };
   const id = apply();
   await flow.process(id);
   assert.equal(db.prepare('SELECT status FROM applications WHERE id = ?').get(id).status, 'pendiente_bases');
   reset(); course = { bases1: true, bases2: true, gc: false };
+  assert.equal(await flow.recheckPending() >= 0, true);
+  assert.equal(db.prepare('SELECT status FROM applications WHERE id = ?').get(id).status, 'pendiente_bases', 'con Bases 2 pero sin GC todavía no');
+  assert.equal(db.prepare('SELECT needs_bases n FROM applications WHERE id = ?').get(id).n, 0, 'ya no necesita voluntario de Bases');
+  assert.equal(to('lider@test.es').length, 0);
+  reset(); course = { bases1: true, bases2: true, gc: true };
   assert.ok((await flow.recheckPending()) >= 1);
   assert.equal(db.prepare('SELECT status FROM applications WHERE id = ?').get(id).status, 'listo');
   assert.ok(to('lider@test.es').length >= 1);
-  assert.equal(db.prepare('SELECT needs_gc FROM applications WHERE id = ?').get(id).needs_gc, 1);
+  assert.equal(db.prepare('SELECT needs_gc n FROM applications WHERE id = ?').get(id).n, 0);
+});
+
+test('quien acaba Bases 1 después recibe un voluntario de GC (y se le avisa)', async () => {
+  reset(); course = { bases1: false, bases2: false, gc: false };
+  const id = apply();
+  await flow.process(id);
+  assert.equal(db.prepare('SELECT gc_user_id g FROM applications WHERE id = ?').get(id).g, null, 'sin Bases 1 todavía no toca GC');
+  reset(); course = { bases1: true, bases2: false, gc: false };
+  await flow.recheckPending();
+  assert.ok(db.prepare('SELECT gc_user_id g FROM applications WHERE id = ?').get(id).g, 'ya toca GC');
+  assert.ok(to('gc@test.es').length + to('gca@test.es').length + to('gcb@test.es').length >= 1, 'el voluntario recibe el aviso');
+  reset();
+  await flow.recheckPending(); // no se repite el aviso
+  assert.equal(to('gc@test.es').length, 0);
+});
+
+test('el voluntario de Bases solo ve a quien le falta Bases; el de GC, a quien le falta GC', async () => {
+  const c = Number(db.prepare("INSERT INTO cities (name) VALUES ('Alcance')").run().lastInsertRowid);
+  const t = Number(db.prepare("INSERT INTO teams (name) VALUES ('Alcance equipo')").run().lastInsertRowid);
+  const b = user('b-alcance@test.es', 'bases', [c]);
+  const g = user('g-alcance@test.es', 'gc', [c]);
+  const f = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course, addNote: async () => {} }, mail: { sendMail: async (m) => sent.push(m) } });
+  reset();
+  const mk = (name, cs) => { course = cs; const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES (?,?,?,?,?,24)`).run(name, `${name}@x.es`, '600111222', c, t).lastInsertRowid); return f.process(id); };
+  await mk('FaltaBases', { bases1: true, bases2: false, gc: true });
+  await mk('FaltaSoloGC', { bases1: true, bases2: true, gc: false });
+  await f.sendDigests();
+  const dB = to('b-alcance@test.es')[0].html;
+  const dG = to('g-alcance@test.es')[0].html;
+  assert.match(dB, /FaltaBases/);
+  assert.doesNotMatch(dB, /FaltaSoloGC/);
+  assert.match(dG, /FaltaSoloGC/);
+  assert.doesNotMatch(dG, /FaltaBases/);
+  assert.ok(b && g);
 });
 
 // ---------- Listado opcional para el líder: interesados que aún no tienen Bases 1, Bases 2 o GC ----------
@@ -166,7 +213,7 @@ test('el líder recibe un listado aparte (opcional) con lo que le falta a cada i
   const nada = nueva('Nada Nadal');            // no tiene nada
   const soloB1 = nueva('Solo Uno');            // solo Bases 1
   const b1gc = nueva('Uno Gece', { gc: true }); // Bases 1 en PCO + dice tener GC
-  const listo = nueva('Listo Sin Gece');       // Bases 1 y 2, sin GC → se le llama, pero se indica
+  const listo = nueva('Listo Sin Gece');       // Bases 1 y 2, sin GC → aún no se le pide al líder que llame: va al listado opcional
   const sinFicha = nueva('Sin Ficha');         // no existe en Planning Center
   const todo = nueva('Lo Tiene Todo');         // completo
   const tenure = nueva('Sin Tiempo');          // aún sin antigüedad: no entra en ninguna lista
@@ -191,10 +238,9 @@ test('el líder recibe un listado aparte (opcional) con lo que le falta a cada i
   assert.ok(pendientes, 'existe el listado aparte');
   // Lista de llamar: solo quien ya tiene Bases 1 y 2 (con la nota de que aún no tiene GC, si es el caso)
   assert.match(antes, /Llamar esta semana/);
-  assert.match(antes, /Listo Sin Gece[^]*?Le falta: GC/);
   assert.match(antes, /Lo Tiene Todo/);
-  assert.doesNotMatch(antes.split('Lo Tiene Todo')[1] || '', /Le falta/, 'quien lo tiene todo no lleva nota');
-  assert.doesNotMatch(antes, /Nada Nadal|Solo Uno|Uno Gece|Sin Ficha/);
+  assert.doesNotMatch(antes, /Le falta/, 'quien lo tiene todo no lleva nota');
+  assert.doesNotMatch(antes, /Nada Nadal|Solo Uno|Uno Gece|Sin Ficha|Listo Sin Gece/);
   // Listado opcional
   assert.match(pendientes, /seguimiento opcional/);
   assert.match(pendientes, /Es opcional/);
@@ -202,7 +248,8 @@ test('el líder recibe un listado aparte (opcional) con lo que le falta a cada i
   assert.match(pendientes, /Solo Uno[^]*?Le falta: Bases 2 y GC/);
   assert.match(pendientes, /Uno Gece[^]*?Le falta: Bases 2\b(?! y GC)/, 'lo que dijo tener (GC) cuenta como hecho');
   assert.match(pendientes, /Sin Ficha[^]*?no tiene ficha en Planning Center/);
-  assert.doesNotMatch(pendientes, /Lo Tiene Todo|Listo Sin Gece|Sin Tiempo/);
+  assert.match(pendientes, /Listo Sin Gece[^]*?Le falta: GC/, 'con Bases 1 y 2 pero sin GC: va al listado opcional, no a «Llamar»');
+  assert.doesNotMatch(pendientes, /Lo Tiene Todo|Sin Tiempo/);
 });
 
 test('quien no tenía ficha y volvió a apuntarse no sale dos veces en el listado', async () => {

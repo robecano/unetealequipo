@@ -33,7 +33,7 @@ function scopeOf(user) {
     return { where: ['a.team_id IN (SELECT team_id FROM leader_teams WHERE user_id = ?)', 'a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)'], params: [user.id, user.id] };
   }
   if (user.role === 'bases') {
-    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', "a.status IN ('pendiente_bases')"], params: [user.id] };
+    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', 'a.needs_bases = 1', "a.status NOT IN ('no_continua','no_apto_aun','sin_pco')"], params: [user.id] };
   }
   if (user.role === 'gc') {
     // Personas con Bases 1 que aún no están en un Grupo de Conexión, de sus ciudades
@@ -49,7 +49,7 @@ function visibleApplications(user, { status, q } = {}, limit = 500) {
   return db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
                        ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email, bu.phone AS bases_phone,
-                       gu.name AS gc_name, gu.email AS gc_email, gu.phone AS gc_phone, a.gc_user_id, a.gc_status, a.needs_gc
+                       gu.name AS gc_name, gu.email AS gc_email, gu.phone AS gc_phone, a.gc_user_id, a.gc_status, a.needs_gc, a.needs_bases
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      LEFT JOIN users bu ON bu.id = a.bases_user_id
                      LEFT JOIN users gu ON gu.id = a.gc_user_id
@@ -62,7 +62,7 @@ function canTouch(user, id) {
   return !!db.prepare(`SELECT 1 FROM applications a WHERE a.id = ? ${where.map((w) => `AND ${w}`).join(' ')}`).get(id, ...params);
 }
 
-const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', sin_pco: 'Sin ficha (Bases 1)', pendiente_bases: 'Pendiente de Bases 2', listo: 'Para llamar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
+const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', sin_pco: 'Sin ficha (Bases 1)', pendiente_bases: 'Pendiente de Bases o GC', listo: 'Para llamar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
 const TENURE_LABEL = { 0: 'Menos de 6 meses', 6: '6-12 meses', 12: '1-2 años', 24: 'Más de 2 años' };
 /** Fecha en hora local (APP_TZ) y formato dd/mm/aaaa hh:mm. SQLite guarda «aaaa-mm-dd hh:mm:ss» en UTC; el resto, ISO. */
 function localDate(v, withTime = true) {

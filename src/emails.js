@@ -11,6 +11,18 @@ const person = (a) =>
   `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a>${a.city ? ` · ${esc(a.city)}` : ''}${a.pco_url ? ` · <a href="${esc(a.pco_url)}">Perfil</a>` : ''}${a.falta ? ` · <i>Le falta: ${esc(a.falta)}</i>` : ''}`;
 const list = (items) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px">${items.map((a) => `<li>${person(a)}</li>`).join('')}</ul>`;
 const italic = (t) => (t ? p(`<i>${esc(t)}</i>`) : '');
+/** Lista de lo que falta. Si le faltan Bases 1 y Bases 2 y comparten enlace, van en una sola línea. */
+function faltanHtml(missing) {
+  if (!missing.length) return '';
+  const items = [];
+  const both = missing.includes('bases1') && missing.includes('bases2') && COURSES.bases1.url() === COURSES.bases2.url();
+  for (const m of missing) {
+    if (both && m === 'bases2') continue;
+    const label = both && m === 'bases1' ? 'Bases 1 y Bases 2' : COURSES[m].label;
+    items.push(`<li><b>${esc(label)}</b> — <a href="${esc(COURSES[m].url())}">${esc(COURSES[m].url())}</a></li>`);
+  }
+  return `<ul style="line-height:1.7;margin:0 0 14px">${items.join('')}</ul>`;
+}
 const first = (name) => String(name || '').split(' ')[0];
 
 /**
@@ -19,13 +31,12 @@ const first = (name) => String(name || '').split(' ')[0];
  * `assign` indica qué voluntarios se le han asignado (Bases / GC) para el texto condicional.
  */
 function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort, assign }) {
-  const blocking = missing.filter((m) => m !== 'gc');
-  const key = tenureShort ? 'applicant_tenure' : notFoundInPco ? 'applicant_no_pco' : blocking.length ? 'applicant_missing' : 'applicant_ready';
+  const key = tenureShort ? 'applicant_tenure' : notFoundInPco ? 'applicant_no_pco' : missing.length ? 'applicant_missing' : 'applicant_ready';
   return render(key, {
     vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '' },
-    flags: { bases: assign?.bases ?? blocking.length > 0, gc: assign?.gc ?? false },
+    flags: { bases: assign?.bases ?? (missing.includes('bases1') || missing.includes('bases2')), gc: assign?.gc ?? false },
     blocks: {
-      faltan: missing.length ? `<ul style="line-height:1.7;margin:0 0 14px">${missing.map((m) => `<li><b>${COURSES[m].label}</b> — <a href="${esc(COURSES[m].url())}">${esc(COURSES[m].url())}</a></li>`).join('')}</ul>` : '',
+      faltan: faltanHtml(missing),
       aviso_area: tenureShort ? '' : italic(app.area_notice),
       aviso_equipo: italic(team.notice),
     },
@@ -35,10 +46,9 @@ function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort, a
 const ctxFor = (a, team) => ({ nombre: first(a.name), nombre_completo: a.name, equipo: team || a.team || '', ciudad: a.city || '' });
 
 /** Aviso inmediato al líder por una persona lista para llamar. */
-function leaderReadyEmail({ app, team, unverified = [], sinGc = false }) {
+function leaderReadyEmail({ app, team, unverified = [] }) {
   return render('leader_ready', {
     vars: ctxFor(app, team.name),
-    flags: { sin_gc: sinGc },
     blocks: {
       persona: list([app]),
       sin_verificar: unverified.length ? p(`⚠ <b>Dato sin verificar:</b> dice haber hecho ${esc(unverified.join(', '))}, pero no consta en Planning Center. Confírmalo al llamarla.`) : '',

@@ -27,8 +27,9 @@ test('los textos originales generan los emails de siempre', () => {
   assert.match(ready.html, /te llamará esta semana y te invitará a visitar el equipo el próximo domingo/);
   const miss = emails.applicantEmail({ app: person, team: { name: 'X' }, missing: ['bases2', 'gc'], assign: { bases: true, gc: false } });
   assert.match(miss.html, /Un voluntario de Bases de tu ciudad/);
-  assert.doesNotMatch(miss.html, /Grupos de Conexión de tu ciudad también/);
-  assert.match(miss.html, /hillsong\.es\/bases2/);
+  assert.doesNotMatch(miss.html, /voluntario de Grupos de Conexión de tu ciudad/);
+  assert.match(miss.html, /hillsong\.es\/bases\b/);
+  assert.match(miss.html, /hillsong\.es\/gc\b/);
   const lead = emails.leaderReadyEmail({ app: person, team: { name: 'Cafetería' } });
   assert.equal(lead.subject, 'Para llamar esta semana: Ana <b>Ruiz</b> (Cafetería)');
   assert.match(lead.html, /esta semana/);
