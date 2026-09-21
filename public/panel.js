@@ -74,7 +74,7 @@ async function applicationsView(box) {
     body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
       h('thead', {}, h('tr', {}, ['Persona', 'Equipo', me.role === 'admin' ? 'Líder de equipo' : null, 'Estado', 'B1', 'GC', 'B2', 'Vol. Bases', 'Vol. GC', 'Acciones'].filter(Boolean).map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map((a) => h('tr', {},
-        h('td', {}, h('b', {}, a.name), a.needs_bases && a.bases_form_before ? h('div', { class: 'warn-mini' }, '⚠ Ya rellenó el formulario de Bases anteriormente pero no fue contactado') : null, h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
+        h('td', {}, h('b', {}, a.name), !a.pco_person_id && a.status === 'pendiente_bases' ? h('div', { class: 'muted' }, 'Sin ficha en Planning Center') : null, a.needs_bases && a.bases_form_before ? h('div', { class: 'warn-mini' }, '⚠ Ya rellenó el formulario de Bases anteriormente pero no fue contactado') : null, h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         // Solo la administración: qué líder (o líderes) de equipo tiene asignada esta persona
         me.role === 'admin' ? h('td', {}, a.leaders?.length

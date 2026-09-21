@@ -62,12 +62,20 @@ test('antigüedad insuficiente para Kids: avisa a la persona, no al líder ni a 
   assert.equal(notes.length, 0);
 });
 
-test('no existe en PCO: email para registrarse en Bases 1', async () => {
+test('no existe en PCO: se trata como si no tuviera nada (voluntario de Bases y email con lo que le falta)', async () => {
   reset(); person = null;
   const id = apply(av);
-  assert.equal(await flow.process(id), 'sin_pco');
-  assert.match(to('ana@x.es')[0].html, /hillsong\.es\/bases\b/);
+  assert.equal(await flow.process(id), 'pendiente_bases');
+  const html = to('ana@x.es')[0].html;
+  assert.match(html, /No hemos encontrado tu ficha/);
+  assert.match(html, /Bases 1 y Bases 2<\/b> — <a href="https:\/\/hillsong\.es\/bases"/);
+  assert.match(html, /Grupo de Conexión/);
+  assert.match(html, /Un voluntario de Bases de tu ciudad te llamará/);
+  assert.equal(to('bases@test.es').length, 1);
   assert.equal(to('lider@test.es').length, 0);
+  const row = db.prepare('SELECT status, pco_person_id, pco_bases1, needs_bases, needs_gc, bases_user_id FROM applications WHERE id=?').get(id);
+  assert.deepEqual([row.status, row.pco_person_id, row.pco_bases1, row.needs_bases, row.needs_gc, row.bases_user_id], ['pendiente_bases', null, null, 1, 0, bases]);
+  assert.equal(notes.length, 0, 'sin ficha no hay dónde escribir la nota');
 });
 
 test('tiene Bases 1 y 2: nota en PCO, avisa al líder y programa seguimiento', async () => {

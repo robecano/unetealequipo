@@ -31,7 +31,8 @@ const first = (name) => String(name || '').split(' ')[0];
  * `assign` indica qué voluntarios se le han asignado (Bases / GC) para el texto condicional.
  */
 function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort, assign }) {
-  const key = tenureShort ? 'applicant_tenure' : notFoundInPco ? 'applicant_no_pco' : missing.length ? 'applicant_missing' : 'applicant_ready';
+  // Sin ficha en Planning Center se le explica, pero igualmente recibe lo que le falta y un voluntario le llamará
+  const key = tenureShort ? 'applicant_tenure' : missing.length ? (notFoundInPco ? 'applicant_no_pco' : 'applicant_missing') : 'applicant_ready';
   return render(key, {
     vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '' },
     flags: { bases: assign?.bases ?? (missing.includes('bases1') || missing.includes('bases2')), gc: assign?.gc ?? false },

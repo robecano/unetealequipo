@@ -46,8 +46,9 @@ function pickVolunteer(role, cityId) {
 
 /** Qué le falta a una solicitud, según Planning Center y lo que dijo la persona. */
 function faltaDe(r) {
-  if (r.status === 'sin_pco') return 'todo (no tiene ficha en Planning Center: Bases 1, Bases 2 y GC)';
-  return joinEs(Object.keys(LABEL).filter((k) => !r['pco_' + k] && !r['self_' + k]).map((k) => LABEL[k]));
+  if (r.status === 'sin_pco') return 'todo (no tiene ficha en Planning Center: Bases 1, Bases 2 y GC)'; // solicitudes anteriores a este cambio
+  const falta = joinEs(Object.keys(LABEL).filter((k) => !r['pco_' + k] && !r['self_' + k]).map((k) => LABEL[k]));
+  return r.pco_person_id ? falta : `${falta} (sin ficha en Planning Center)`;
 }
 
 /** Quién más va a contactar con la persona: solo los voluntarios que realmente tiene asignados (y a los que aún les toca). */
@@ -148,22 +149,16 @@ function createFlow({ pco, mail }) {
     let course;
     try {
       person = await pco.findPerson({ email: a.email, phone: a.phone, name: a.name });
-      if (person) course = await pco.getCourseStatus(person.id, { fields: config.fields, required: config.required });
+      // Sin ficha en Planning Center se trata como si no tuviera nada (ni Bases 1, ni Bases 2, ni GC)
+      course = person ? await pco.getCourseStatus(person.id, { fields: config.fields, required: config.required }) : { bases1: false, bases2: false, gc: false };
     } catch (e) {
       db.prepare('UPDATE applications SET error=?, updated_at=? WHERE id=?').run(String(e.message).slice(0, 300), now(), id);
       logEvent(id, null, 'pco_error', e.message);
       return 'recibida'; // el planificador lo reintenta
     }
 
-    if (!person) {
-      setStatus('sin_pco');
-      logEvent(id, null, 'sin_pco', 'No existe en Planning Center: se le envía Bases 1');
-      await safeMail(id, 'aviso a la persona (Bases 1)', emails.applicantEmail({ app: a, team, missing: [], notFoundInPco: true }), a.email);
-      return 'sin_pco';
-    }
-
     // ¿Rellenó ya el formulario de Bases 1 o 2? Si fue antes de apuntarse a servir, se avisa al voluntario de Bases en su lista.
-    const forms = await safeForms(id, person.id);
+    const forms = person ? await safeForms(id, person.id) : [];
     const createdIso = iso(a.created_at);
 
     // Si la persona dice que sí y en Planning Center no consta, se cree el formulario
@@ -177,16 +172,16 @@ function createFlow({ pco, mail }) {
     const needsGc = has('bases1') && !has('gc');
     const blocked = missing.filter((k) => BLOCKING.includes(k));
     setStatus(blocked.length ? 'pendiente_bases' : 'recibida', {
-      pco_person_id: person.id,
-      pco_bases1: +course.bases1,
-      pco_bases2: +course.bases2,
-      pco_gc: +course.gc,
+      pco_person_id: person?.id ?? null,
+      pco_bases1: person ? +course.bases1 : null, // null = no se sabe (no hay ficha)
+      pco_bases2: person ? +course.bases2 : null,
+      pco_gc: person ? +course.gc : null,
       needs_gc: +needsGc,
       needs_bases: +needsBases,
       bases_form_before: +(needsBases && forms.some((f) => f.created_at <= createdIso)),
       bases_form_at: forms[0]?.created_at || null,
     });
-    logEvent(id, null, 'pco_match', `Persona ${person.id} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
+    logEvent(id, null, 'pco_match', `${person ? `Persona ${person.id}` : 'Sin ficha en Planning Center: se trata como si no tuviera nada'} · faltan: ${missing.join(', ') || 'nada'}${unverifiedKeys.length ? ` · declarado sin constar en PCO: ${unverifiedKeys.join(', ')}` : ''}`);
 
     await writeNotes(id);
 
@@ -204,12 +199,12 @@ function createFlow({ pco, mail }) {
       }
     }
 
-    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: a, team, missing, assign: { bases: !!volunteers.bases, gc: !!volunteers.gc } }), a.email);
+    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: a, team, missing, notFoundInPco: !person, assign: { bases: !!volunteers.bases, gc: !!volunteers.gc } }), a.email);
     if (volunteers.bases) {
       const fresh = fullApp(id); // con las marcas recién calculadas
-      await safeMail(id, 'aviso al voluntario de Bases', emails.basesEmail({ items: [{ app: forBases(fresh, person.url) }], missing }), volunteers.bases.email);
+      await safeMail(id, 'aviso al voluntario de Bases', emails.basesEmail({ items: [{ app: forBases(fresh, person?.url) }], missing }), volunteers.bases.email);
     }
-    if (volunteers.gc) await safeMail(id, 'aviso al voluntario de GC', emails.gcEmail({ items: [{ app: forTemplate(a, person.url) }] }), volunteers.gc.email);
+    if (volunteers.gc) await safeMail(id, 'aviso al voluntario de GC', emails.gcEmail({ items: [{ app: forTemplate(a, person?.url) }] }), volunteers.gc.email);
 
     if (!blocked.length) {
       await markReady(id);
@@ -240,10 +235,19 @@ function createFlow({ pco, mail }) {
    * Si ya tienen Bases 1, Bases 2 y GC se avisa al líder; si acaban Bases 1 y les falta GC, se asigna un voluntario de GC.
    */
   async function recheckPending() {
-    const rows = db.prepare("SELECT id, status, created_at, pco_person_id, self_bases1, self_bases2, self_gc, bases_removed FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1 OR needs_bases = 1) AND pco_person_id IS NOT NULL").all();
+    const rows = db.prepare("SELECT id, status, created_at, name, email, phone, pco_person_id, self_bases1, self_bases2, self_gc, bases_removed FROM applications WHERE (status = 'pendiente_bases' OR needs_gc = 1 OR needs_bases = 1)").all();
     let promoted = 0;
     for (const r of rows) {
       try {
+        // Sin ficha al apuntarse: si ya ha aparecido en Planning Center (p. ej. porque se registró en Bases), se enlaza y se anotan sus notas
+        if (!r.pco_person_id) {
+          const found = await pco.findPerson({ email: r.email, phone: r.phone, name: r.name });
+          if (!found) continue;
+          db.prepare('UPDATE applications SET pco_person_id = ?, note_synced = 0, notes_done = 0, updated_at = ? WHERE id = ?').run(found.id, now(), r.id);
+          logEvent(r.id, null, 'pco_enlazada', `Ya tiene ficha en Planning Center (${found.id})`);
+          r.pco_person_id = found.id;
+          await writeNotes(r.id);
+        }
         const c = await pco.getCourseStatus(r.pco_person_id, { fields: config.fields, required: config.required });
         const has = (k) => !!c[k] || !!r['self_' + k];
         const needsGc = has('bases1') && !has('gc');

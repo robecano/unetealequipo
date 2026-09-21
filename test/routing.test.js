@@ -247,7 +247,7 @@ test('el líder recibe un listado aparte (opcional) con lo que le falta a cada i
   assert.match(pendientes, /Nada Nadal[^]*?Le falta: Bases 1, Bases 2 y GC/);
   assert.match(pendientes, /Solo Uno[^]*?Le falta: Bases 2 y GC/);
   assert.match(pendientes, /Uno Gece[^]*?Le falta: Bases 2\b(?! y GC)/, 'lo que dijo tener (GC) cuenta como hecho');
-  assert.match(pendientes, /Sin Ficha[^]*?no tiene ficha en Planning Center/);
+  assert.match(pendientes, /Sin Ficha[^]*?Le falta: Bases 1, Bases 2 y GC \(sin ficha en Planning Center\)/);
   assert.match(pendientes, /Listo Sin Gece[^]*?Le falta: GC/, 'con Bases 1 y 2 pero sin GC: va al listado opcional, no a «Llamar»');
   assert.doesNotMatch(pendientes, /Lo Tiene Todo|Sin Tiempo/);
 });
@@ -353,4 +353,75 @@ test('si no hay voluntario asignado, al líder no se le promete que alguien cont
   const html = to('lider-sinnadie@test.es')[0].html;
   assert.match(html, /Huérfano Pérez/);
   assert.doesNotMatch(html, /También le contactar/);
+});
+
+// ---------- Sin ficha en Planning Center = como si no tuviera nada ----------
+test('sin ficha en Planning Center: mismos destinatarios que quien no tiene nada (fila 1 del cuadrante) y el líder lo ve en su listado con «sin ficha»', async () => {
+  const c = Number(db.prepare("INSERT INTO cities (name) VALUES ('SinFicha')").run().lastInsertRowid);
+  const t = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo SinFicha')").run().lastInsertRowid);
+  const lid = user('lider-sf@test.es', 'leader', [c]); db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(lid, t);
+  user('bases-sf@test.es', 'bases', [c]); user('gc-sf@test.es', 'gc', [c]);
+  const notas = [];
+  let encontrada = null;
+  const f = createFlow({ pco: { findPerson: async () => encontrada, getCourseStatus: async () => course, addNote: async (id, txt) => notas.push([id, txt]), getBasesFormSubmissions: async () => [] }, mail: { sendMail: async (m) => sent.push(m) } });
+  const mk = (n, self = {}) => Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,self_bases1,self_bases2,self_gc) VALUES (?,?,?,?,?,24,?,?,?)`).run(n, `${n.replace(/ /g, '').toLowerCase()}@x.es`, '600111222', c, t, +!!self.b1, +!!self.b2, +!!self.gc).lastInsertRowid);
+
+  reset();
+  const id = mk('Sin Ficha Sara');
+  assert.equal(await f.process(id), 'pendiente_bases');
+  assert.equal(to('bases-sf@test.es').length, 1, 'voluntario de Bases');
+  assert.equal(to('gc-sf@test.es').length, 0, 'sin Bases 1 todavía no toca GC');
+  assert.equal(to('lider-sf@test.es').length, 0, 'el líder no recibe aviso inmediato');
+  assert.match(to('sinfichasara@x.es')[0].html, /No hemos encontrado tu ficha/);
+  assert.equal(notas.length, 0);
+  const r = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  assert.deepEqual([r.pco_person_id, r.needs_bases, r.needs_gc, r.bases_form_before], [null, 1, 0, 0]);
+
+  reset(); await f.sendDigests();
+  const lider = to('lider-sf@test.es')[0].html;
+  assert.match(lider, /Sin Ficha Sara[^]*?Le falta: Bases 1, Bases 2 y GC \(sin ficha en Planning Center\)[^]*?También le contactará un voluntario de Bases/);
+  const b = to('bases-sf@test.es')[0].html;
+  assert.match(b, /Sin Ficha Sara/);
+  assert.doesNotMatch(b, /anteriormente/, 'no puede haber rellenado el formulario si no tiene ficha');
+  assert.equal(to('gc-sf@test.es').length, 0);
+
+  // Si además dice que lo tiene todo, se cree el formulario (como con cualquier persona) y el líder recibe el aviso con el ⚠
+  reset();
+  const todo = mk('Sin Ficha Todo', { b1: true, b2: true, gc: true });
+  assert.equal(await f.process(todo), 'listo');
+  assert.equal(to('bases-sf@test.es').length + to('gc-sf@test.es').length, 0);
+  assert.match(to('lider-sf@test.es')[0].html, /Dato sin verificar/);
+  assert.equal(notas.length, 0);
+});
+
+test('sin ficha: cuando su ficha aparece en Planning Center (p. ej. tras registrarse en Bases) se enlaza, se anotan sus notas y sigue el flujo normal', async () => {
+  const c = db.prepare("SELECT id FROM cities WHERE name = 'SinFicha'").get().id;
+  const t = db.prepare("SELECT id FROM teams WHERE name = 'Equipo SinFicha'").get().id;
+  const notas = [];
+  let encontrada = null; let cursos = { bases1: false, bases2: false, gc: false };
+  const f = createFlow({ pco: { findPerson: async ({ email }) => (email === 'aparece@x.es' ? encontrada : null), getCourseStatus: async () => cursos, addNote: async (id, txt) => notas.push([id, txt]), getBasesFormSubmissions: async () => [] }, mail: { sendMail: async (m) => sent.push(m) } });
+  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Aparece Ana','aparece@x.es','600111222',?,?,24)`).run(c, t).lastInsertRowid);
+  await f.process(id);
+  assert.equal(db.prepare('SELECT pco_person_id p FROM applications WHERE id = ?').get(id).p, null);
+
+  await f.recheckPending(); // sigue sin ficha: no pasa nada y no da error
+  assert.equal(db.prepare('SELECT pco_person_id p, status s FROM applications WHERE id = ?').get(id).s, 'pendiente_bases');
+  assert.equal(notas.length, 0);
+
+  encontrada = { id: '777', url: 'https://pco/777' }; cursos = { bases1: true, bases2: false, gc: false }; // se registró en Bases y ya tiene ficha y Bases 1
+  reset(); await f.recheckPending();
+  const r = db.prepare('SELECT * FROM applications WHERE id = ?').get(id);
+  assert.equal(r.pco_person_id, '777');
+  assert.equal(r.pco_bases1, 1);
+  assert.equal(r.needs_gc, 1, 'ahora que tiene Bases 1 le toca un voluntario de GC');
+  assert.ok(r.gc_user_id);
+  assert.equal(notas.length, 1);
+  assert.match(notas[0][1], /^Interesado en servir en Equipo SinFicha \(SinFicha\)/);
+  assert.equal(r.note_synced, 1);
+  assert.ok(db.prepare("SELECT 1 FROM application_events WHERE application_id = ? AND event = 'pco_enlazada'").get(id));
+  assert.equal(to('gc-sf@test.es').length, 1);
+
+  cursos = { bases1: true, bases2: true, gc: true }; reset(); await f.recheckPending();
+  assert.equal(db.prepare('SELECT status s FROM applications WHERE id = ?').get(id).s, 'listo');
+  assert.equal(to('lider-sf@test.es').length, 1, 'con los tres, aviso inmediato al líder');
 });

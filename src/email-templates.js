@@ -60,10 +60,10 @@ const TEMPLATES = {
   },
   applicant_no_pco: {
     group: 'persona', title: 'No aparece en Planning Center', to: 'La persona que se apunta',
-    when: 'En cuanto se apunta y no hay ninguna ficha con su email o teléfono en Planning Center. Se le pide hacer Bases 1.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'enlace_bases', 'aviso_area', 'aviso_equipo'], flags: [], required: ['enlace_bases'],
+    when: 'En cuanto se apunta y no hay ninguna ficha con su email o teléfono en Planning Center. Se trata como si no tuviera nada (ni Bases 1, ni Bases 2, ni GC): recibe lo que le falta y un voluntario de Bases le llama.',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'faltan', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['bases', 'gc'], required: ['faltan'],
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nNo hemos encontrado tu ficha en nuestro sistema. El primer paso es hacer **Bases 1**; en cuanto lo tengas, vuelve a apuntarte y seguiremos.\n\n[[Registrarme en Bases|{{enlace_bases}}]]\n\n${NOTICES}`,
+    body: `${HELLO}\n\nNo hemos encontrado tu ficha en nuestro sistema, así que todavía no tienes registrado ningún paso. Estos son los que necesitas:\n\n{{faltan}}\n\n{{#bases}}Un voluntario de Bases de tu ciudad te llamará para invitarte a apuntarte a Bases ({{enlace_bases}}) y contarte cómo funciona (horarios, agenda…).{{/bases}}\n\nCuando lo tengas todo, el líder del equipo te llamará.\n\n${NOTICES}`,
   },
   applicant_missing: {
     group: 'persona', title: 'Le falta Bases 1, Bases 2 o GC', to: 'La persona que se apunta',
