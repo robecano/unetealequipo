@@ -48,6 +48,17 @@ function faltaDe(r) {
   return joinEs(Object.keys(LABEL).filter((k) => !r['pco_' + k] && !r['self_' + k]).map((k) => LABEL[k]));
 }
 
+/** Quién más va a contactar con la persona: solo los voluntarios que realmente tiene asignados (y a los que aún les toca). */
+function contactoDe(r) {
+  if (r.status === 'sin_pco') return 'Aún sin ficha: ningún voluntario le contacta todavía';
+  const bases = r.needs_bases && r.bases_user_id;
+  const gc = r.needs_gc && r.gc_user_id;
+  if (bases && gc) return 'También le contactarán un voluntario de Bases y otro de GC';
+  if (bases) return 'También le contactará un voluntario de Bases';
+  if (gc) return 'También le contactará un voluntario de GC';
+  return '';
+}
+
 const forTemplate = (a, pcoUrl) => ({ name: a.name, email: a.email, phone: a.phone, city: a.city, team: a.team_name, pco_url: pcoUrl });
 
 /** Notas para el perfil de PCO: siempre el interés en servir y, si dice tener algo que no consta, otra nota aparte. */
@@ -252,7 +263,7 @@ function createFlow({ pco, mail }) {
         const ready = mine.filter((r) => r.status === 'listo').map((r) => forTemplate(r));
         const followups = mine.filter((r) => ['contactado', 'visito'].includes(r.status) && r.followup_at && r.followup_at <= inDays(1)).map((r) => forTemplate(r));
         // Listado aparte y opcional: interesados que aún no tienen Bases 1, Bases 2 o GC (o ni siquiera ficha en Planning Center)
-        const pending = mine.filter((r) => ['pendiente_bases', 'sin_pco'].includes(r.status)).map((r) => ({ ...forTemplate(r), falta: faltaDe(r) }));
+        const pending = mine.filter((r) => ['pendiente_bases', 'sin_pco'].includes(r.status)).map((r) => ({ ...forTemplate(r), falta: faltaDe(r), contacto: contactoDe(r) }));
         if (!ready.length && !followups.length && !pending.length) continue;
         await deliver(l.email, emails.leaderDigestEmail({ team, ready, followups, pending }), 'Resumen líder');
       }

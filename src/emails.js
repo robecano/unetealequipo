@@ -8,7 +8,7 @@ const COURSES = {
 };
 
 const person = (a) =>
-  `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a>${a.city ? ` · ${esc(a.city)}` : ''}${a.pco_url ? ` · <a href="${esc(a.pco_url)}">Perfil</a>` : ''}${a.falta ? ` · <i>Le falta: ${esc(a.falta)}</i>` : ''}`;
+  `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a>${a.city ? ` · ${esc(a.city)}` : ''}${a.pco_url ? ` · <a href="${esc(a.pco_url)}">Perfil</a>` : ''}${a.falta ? ` · <i>Le falta: ${esc(a.falta)}</i>` : ''}${a.contacto ? ` · <i>${esc(a.contacto)}</i>` : ''}`;
 const list = (items) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px">${items.map((a) => `<li>${person(a)}</li>`).join('')}</ul>`;
 const italic = (t) => (t ? p(`<i>${esc(t)}</i>`) : '');
 /** Lista de lo que falta. Si le faltan Bases 1 y Bases 2 y comparten enlace, van en una sola línea. */
@@ -66,7 +66,7 @@ function leaderDigestEmail({ team, ready, followups, pending }) {
       seccion_seguimiento: followups.length ? h('🔁 Llamada de seguimiento (consolidar en el equipo)') + list(followups) : '',
       seccion_pendientes: pending.length
         ? h('⏳ Interesados que aún no tienen Bases 1, Bases 2 o GC (seguimiento opcional)') + list(pending) +
-          p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC les ayudan cuando corresponde.')
+          p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC también contactarán con ellos para ayudarles con lo que les falta (lo indicamos en cada persona).')
         : '',
     },
   });

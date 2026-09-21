@@ -9,7 +9,7 @@ Escaparate de los equipos de Hillsong España y formulario para apuntarse a serv
 4. Se leen los campos **Bases 1**, **Bases 2** y **GC Asignado** de PCO (si la persona dice «Sí» y en PCO no consta, se cree el formulario: se avisa al líder con la marca «dato sin verificar» y se deja una nota aparte en su perfil de PCO: «La persona dice haber hecho Bases 2, pero no consta en Planning Center…») y se escribe la nota «Interesado en servir en X».
 5. **Reparto entre líder y voluntarios** (lo que la persona dice tener en el formulario cuenta como hecho aunque en PCO no conste):
 
-   | Bases 1 | Bases 2 | GC | Voluntario de Bases | Voluntario de GC | Líder |
+   | Bases 1 | Bases 2 | GC | Voluntario de Bases | Voluntario de GC | Líder de equipo (aviso inmediato) |
    |:-:|:-:|:-:|:-:|:-:|:-:|
    | ✗ | ✗ | ✗ | ✔ | | |
    | ✔ | ✗ | ✗ | ✔ | ✔ | |
@@ -17,7 +17,7 @@ Escaparate de los equipos de Hillsong España y formulario para apuntarse a serv
    | ✔ | ✔ | ✗ | | ✔ | |
    | ✔ | ✔ | ✔ | | | ✔ |
 
-   Los voluntarios reciben a quien ha solicitado servir y le falta algo como una **lista de posible seguimiento** (no hace falta que la persona lo tenga todo). Los voluntarios de **Bases** llaman a quien le falta algo de Bases para invitarle a apuntarse en `hillsong.es/bases`, y los de **GC** a quien le falta GC para invitarle en `hillsong.es/gc`. Los de Bases cuentan cómo funciona (horarios, agenda…) y los de GC explican la importancia de los Grupos de Conexión, qué son y cómo funcionan. Cada voluntario es de la ciudad de la persona (reparto equilibrado). Si no hay ninguno, se avisa al admin y no se le promete nada a la persona. **El líder solo recibe el aviso inmediato cuando la persona tiene Bases 1, Bases 2 y GC** (llamar esta semana, invitar el domingo); seguimiento a los 7 días. Si a alguien le falta algo, en su **resumen semanal** recibe un listado aparte y opcional con los interesados que aún no tienen Bases 1, Bases 2 o GC (o ni siquiera ficha en Planning Center), indicando qué le falta a cada uno.
+   **Roles:** los *voluntarios de Bases y de GC* son quienes llaman (no son de un equipo); el *líder de equipo* lleva el equipo al que se apunta la persona. Los voluntarios reciben a quien ha solicitado servir y le falta algo como una **lista de posible seguimiento** (no hace falta que la persona lo tenga todo). Los voluntarios de **Bases** llaman a quien le falta algo de Bases para invitarle a apuntarse en `hillsong.es/bases`, y los de **GC** a quien le falta GC para invitarle en `hillsong.es/gc`. Los de Bases cuentan cómo funciona (horarios, agenda…) y los de GC explican la importancia de los Grupos de Conexión, qué son y cómo funcionan. Cada voluntario es de la ciudad de la persona (reparto equilibrado). Si no hay ninguno, se avisa al admin y no se le promete nada a la persona. **El líder solo recibe el aviso inmediato cuando la persona tiene Bases 1, Bases 2 y GC** (llamar esta semana, invitar el domingo); seguimiento a los 7 días. Si a alguien le falta algo, el líder de equipo recibe en su **resumen semanal** un listado aparte y opcional con esos interesados (o sin ficha en Planning Center), indicando qué le falta a cada uno y **qué voluntarios de Bases o de GC también van a contactar con la persona**.
 6. Cada semana (por defecto lunes 8:00) resumen por email a líderes y voluntarios de Bases, y se vuelve a comprobar en PCO a los pendientes: si ya tienen Bases 2 pasan a «para llamar».
 
 ## Equipos: áreas y subequipos

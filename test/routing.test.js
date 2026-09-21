@@ -279,3 +279,78 @@ test('si nadie está pendiente, el email no incluye el listado opcional', async 
   assert.match(html, /Llamar esta semana/);
   assert.doesNotMatch(html, /seguimiento opcional/);
 });
+
+// ---------- El cuadrante completo, de extremo a extremo ----------
+test('cuadrante: cada rol recibe lo suyo, de inmediato y en su resumen; el líder de equipo ve el resto como listado opcional con quién más contactará', async () => {
+  const c = Number(db.prepare("INSERT INTO cities (name) VALUES ('Cuadrante')").run().lastInsertRowid);
+  const t = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo Cuadrante')").run().lastInsertRowid);
+  const lid = user('lider-cuad@test.es', 'leader', [c]);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(lid, t);
+  user('bases-cuad@test.es', 'bases', [c]);
+  user('gc-cuad@test.es', 'gc', [c]);
+  const f = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course, addNote: async () => {} }, mail: { sendMail: async (m) => sent.push(m) } });
+
+  //  nombre       B1     B2     GC    Bases  GC     líder-inmediato  contacto que se le indica al líder
+  const FILAS = [
+    ['Fila Uno',    false, false, false, true,  false, false, /También le contactará un voluntario de Bases(?! y)/],
+    ['Fila Dos',    true,  false, false, true,  true,  false, /También le contactarán un voluntario de Bases y otro de GC/],
+    ['Fila Tres',   true,  false, true,  true,  false, false, /También le contactará un voluntario de Bases(?! y)/],
+    ['Fila Cuatro', true,  true,  false, false, true,  false, /También le contactará un voluntario de GC/],
+    ['Fila Cinco',  true,  true,  true,  false, false, true,  null],
+  ];
+  const ids = {};
+  for (const [nombre, b1, b2, g, wantBases, wantGc, wantLeader] of FILAS) {
+    reset();
+    course = { bases1: b1, bases2: b2, gc: g };
+    const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES (?,?,?,?,?,24)`).run(nombre, `${nombre.replace(/ /g, '').toLowerCase()}@x.es`, '600111222', c, t).lastInsertRowid);
+    person = { id: String(id), url: `https://pco/${id}` };
+    await f.process(id);
+    ids[nombre] = id;
+    const dest = (a) => to(a).filter((m) => m.html.includes(nombre)).length;
+    assert.equal(dest('bases-cuad@test.es'), +wantBases, `${nombre}: voluntario de Bases (inmediato)`);
+    assert.equal(dest('gc-cuad@test.es'), +wantGc, `${nombre}: voluntario de GC (inmediato)`);
+    assert.equal(dest('lider-cuad@test.es'), +wantLeader, `${nombre}: líder de equipo (aviso inmediato)`);
+  }
+
+  reset();
+  await f.sendDigests();
+  const lider = to('lider-cuad@test.es');
+  assert.equal(lider.length, 1);
+  const [antes, opcional = ''] = lider[0].html.split('Interesados que aún no tienen Bases 1, Bases 2 o GC');
+  assert.match(antes, /Fila Cinco/, 'lo tiene todo → «Llamar»');
+  assert.doesNotMatch(antes, /Fila (Uno|Dos|Tres|Cuatro)/);
+  assert.match(opcional, /Es opcional/);
+  assert.match(opcional, /Los voluntarios de Bases y de GC también contactarán con ellos/);
+  assert.doesNotMatch(opcional, /Fila Cinco/);
+  for (const [nombre, , , , , , , contacto] of FILAS.filter((r) => r[7])) {
+    const trozo = opcional.split('<li>').find((x) => x.includes(nombre)) || '';
+    assert.match(trozo, contacto, `${nombre}: el líder ve quién más contactará`);
+  }
+
+  // Resumen semanal de los voluntarios: cada uno recibe solo lo suyo
+  const b = to('bases-cuad@test.es')[0].html;
+  const g = to('gc-cuad@test.es')[0].html;
+  for (const n of ['Fila Uno', 'Fila Dos', 'Fila Tres']) assert.match(b, new RegExp(n));
+  for (const n of ['Fila Cuatro', 'Fila Cinco']) assert.doesNotMatch(b, new RegExp(n));
+  for (const n of ['Fila Dos', 'Fila Cuatro']) assert.match(g, new RegExp(n));
+  for (const n of ['Fila Uno', 'Fila Tres', 'Fila Cinco']) assert.doesNotMatch(g, new RegExp(n));
+  assert.match(b, /lista de posible seguimiento/);
+  assert.match(g, /importancia de los Grupos de Conexión/);
+});
+
+test('si no hay voluntario asignado, al líder no se le promete que alguien contactará', async () => {
+  const c = Number(db.prepare("INSERT INTO cities (name) VALUES ('SinNadie')").run().lastInsertRowid);
+  const t = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo SinNadie')").run().lastInsertRowid);
+  const lid = user('lider-sinnadie@test.es', 'leader', [c]);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(lid, t);
+  const f = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course, addNote: async () => {} }, mail: { sendMail: async (m) => sent.push(m) } });
+  course = { bases1: true, bases2: false, gc: false };
+  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Huérfano Pérez','h@x.es','600111222',?,?,24)`).run(c, t).lastInsertRowid);
+  person = { id: String(id), url: 'https://pco/x' };
+  await f.process(id);
+  reset();
+  await f.sendDigests();
+  const html = to('lider-sinnadie@test.es')[0].html;
+  assert.match(html, /Huérfano Pérez/);
+  assert.doesNotMatch(html, /También le contactar/);
+});

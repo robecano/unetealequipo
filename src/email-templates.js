@@ -247,7 +247,7 @@ function sampleContext(key) {
       sin_verificar: p('⚠ <b>Dato sin verificar:</b> dice haber hecho Bases 2, pero no consta en Planning Center. Confírmalo al llamarla.'),
       seccion_llamar: h('📞 Llamar esta semana e invitar el domingo') + list,
       seccion_seguimiento: h('🔁 Llamada de seguimiento (consolidar en el equipo)') + list,
-      seccion_pendientes: h('⏳ Interesados que aún no tienen Bases 1, Bases 2 o GC (seguimiento opcional)') + list.replace('Perfil</a>', 'Perfil</a> · <i>Le falta: Bases 2 y GC</i>') + p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC les ayudan cuando corresponde.'),
+      seccion_pendientes: h('⏳ Interesados que aún no tienen Bases 1, Bases 2 o GC (seguimiento opcional)') + list.replace(/Perfil<\/a>/g, 'Perfil</a> · <i>Le falta: Bases 2 y GC</i> · <i>También le contactarán un voluntario de Bases y otro de GC</i>') + p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC también contactarán con ellos para ayudarles con lo que les falta (lo indicamos en cada persona).'),
     },
   };
 }
