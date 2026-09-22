@@ -59,7 +59,7 @@ app.get('/api/public', (_req, res) => {
 const TENURES = [0, 6, 12, 24];
 const applyLimit = auth.limiter(6, 60 * 60 * 1000);
 const yesNo = (v) => (v === true || v === 'si' || v === 'sí' || v === 1 || v === '1' ? 1 : 0);
-const OPEN_STATUSES = ['recibida', 'pendiente_bases', 'listo', 'contactado', 'visito'];
+const OPEN_STATUSES = ['recibida', 'listo', 'contactado', 'visito'];
 
 app.post('/api/apply', (req, res) => {
   const b = req.body || {};
@@ -129,7 +129,7 @@ app.use((err, _req, res, _next) => {
 if (config.adminEmail) {
   db.prepare("INSERT INTO users (email, name, role) VALUES (?, 'Administrador', 'admin') ON CONFLICT(email) DO UPDATE SET role='admin', active=1").run(config.adminEmail);
 }
-if (!config.panelPassword) console.warn('PANEL_PASSWORD vacío: líderes y voluntarios de Bases no podrán entrar.');
+if (!config.panelPassword) console.warn('PANEL_PASSWORD vacío: los líderes de equipo no podrán entrar.');
 if (!config.adminPassword) console.warn('ADMIN_PASSWORD vacío: el administrador no podrá entrar.');
 
 if (require.main === module) {

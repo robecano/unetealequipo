@@ -1,47 +1,40 @@
-# Guía rápida para voluntarios y líderes · Únete al equipo
+# Guía rápida para líderes de equipo · Únete al equipo
 
 ## ¿Qué es esto?
-Un sistema que recoge a las personas que quieren **servir en un equipo** de la iglesia y avisa a la persona adecuada para que **les llame** y les ayude con su siguiente paso. Tú eres esa persona.
+Un sistema que recoge a las personas que quieren **servir en un equipo** de la iglesia y te avisa a ti, líder de ese equipo, para que **les llames** y les ayudes con su siguiente paso.
 
 ## ¿Cómo entro?
-**equipos.iglesiahillsong.com/panel** con **tu email** y la contraseña común (te la da coordinación en persona; no la compartas por escrito). Solo verás lo que te corresponde.
+**equipos.iglesiahillsong.com/panel** con **tu email** y la contraseña común (te la da coordinación en persona; no la compartas por escrito). Solo verás las solicitudes de tu equipo y tu ciudad.
 
 ## ¿Qué recibo?
-- Un **email** cuando alguien nuevo te toca (en el panel también aparece).
-- Un **resumen cada lunes por la mañana** con tu lista.
+- Un **email en cuanto alguien se apunta** a tu equipo, tenga o no completados Bases 1, Bases 2 y GC. Trae sus datos, qué cursos tiene y si está «contrastado con Planning Center».
+- Una **lista completa por email dos veces por semana** (lunes y jueves a las 8:00, salvo que administración lo cambie), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto.
+- En el panel siempre ves la lista al día.
 
-## Si eres voluntario de **Bases**
-Te llegan personas que quieren servir y **aún no han hecho Bases 1 o Bases 2**.
-1. **Llámales**, dales la bienvenida y cuéntales cómo funciona Bases (horarios, agenda).
-2. **Invítales a apuntarse:** hillsong.es/bases
-3. Pulsa **Contactado**. Cuando se apunten: **Ya está apuntado en Bases**.
+## Qué hacer con cada persona
+1. **Esta semana:** llámala e invítala a visitar el equipo **el próximo domingo** → pulsa **Llamé**.
+2. **El domingo:** recíbela y enséñale el equipo → pulsa **Visitó**.
+3. **La semana siguiente:** vuelve a llamarla para saber cómo está y consolidarlo.
+4. Pulsa **Confirmar** (o **No continúa**) según corresponda.
 
-## Si eres voluntario de **GC**
-Te llegan personas que ya tienen Bases 1 y **aún no están en un Grupo de Conexión**.
-1. **Llámales** y explícales **la importancia de los Grupos de Conexión, qué son y cómo funcionan**.
-2. **Invítales a apuntarse:** hillsong.es/gc
-3. Pulsa **Contactado**. Cuando estén en uno: **Ya está en un GC**.
+No hace falta que tenga Bases 1, Bases 2 o GC hechos para contactarla: llámala igual y, si le falta algo, coméntaselo tú mismo en la llamada (el email que recibió ya se lo explicó).
 
-## Si eres **líder de equipo**
-Te llega el aviso cuando alguien tiene **Bases 1, Bases 2 y GC** y quiere servir en tu equipo.
-1. **Esta semana:** llámale e invítale a visitar el equipo **el próximo domingo** → **Llamé**.
-2. **El domingo:** recíbele y enséñale el equipo → **Visitó**.
-3. **La semana siguiente:** vuelve a llamarle para saber cómo está y consolidarlo.
-4. Pulsa **Confirmar** (o **No continúa**).
-
-En tu resumen semanal verás además un **listado opcional** de interesados a los que aún les falta algo. No tienes que hacer nada con él: los voluntarios de Bases y GC también les contactarán. Si quieres, llámales para darles la bienvenida.
+## La columna «Contrastado con Planning Center»
+Junto a cada persona ves si lo que consta cuadra con Planning Center:
+- **Sí:** todo en orden.
+- **No** (sin ficha): no la hemos encontrado en Planning Center. Pregúntale en la llamada si hay algún fallo (un email o teléfono distinto al que usó) o si aún no se ha registrado.
+- **No** (con mezcla): dice tener algo (p. ej. Bases 2) que no consta en Planning Center. Si confirmas que ya lo hizo, avisa al equipo de PCO de tu campus para que lo revisen y lo corrijan.
 
 ## Botones útiles
-- **Quitar de mi lista / mi listado:** si ya no hace falta seguir a esa persona (puedes recuperarla en *Quitadas*).
-- **⚠ Ya rellenó el formulario de Bases anteriormente pero no fue contactado:** se apuntó a Bases antes y nadie la llamó. Se queda en tu lista hasta que la quites.
-- **⚠ Dato sin verificar:** dice tener algo que no consta en el sistema; confírmalo en la llamada.
+- **B1 / GC / B2:** ✓ si lo tiene (por Planning Center o porque lo declaró en el formulario), ✗ si no.
+- **Borrar:** elimina una solicitud de tu lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial).
 - **Exportar CSV:** descarga tu lista.
 
 ## Consejos para la llamada
 - Preséntate, di de parte de qué iglesia llamas y por qué (*«has pedido servir en…»*).
 - Sé breve y cercano; pregunta cómo está antes de hablar de pasos.
 - Si no contesta, prueba por mensaje (WhatsApp) y vuelve a intentarlo otro día.
-- Si no quiere continuar, no insistas: pulsa **Quitar de mi lista**.
+- Si no quiere continuar, no insistas: pulsa **No continúa**.
 
 ## Confidencialidad
 Los datos (nombre, teléfono, email) son solo para contactar por este motivo. No los compartas, no hagas capturas y no los guardes fuera del sistema.

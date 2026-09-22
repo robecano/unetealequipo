@@ -1,4 +1,5 @@
 const config = require('./config');
+const courses = require('./courses');
 const { render, esc, layout, btn, p } = require('./email-templates');
 
 const COURSES = {
@@ -7,10 +8,20 @@ const COURSES = {
   gc: { label: 'un Grupo de Conexión (GC)', url: () => config.urls.gc },
 };
 
-const person = (a) =>
-  `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a>${a.city ? ` · ${esc(a.city)}` : ''}${a.pco_url ? ` · <a href="${esc(a.pco_url)}">Perfil</a>` : ''}${a.falta ? ` · <i>Le falta: ${esc(a.falta)}</i>` : ''}${a.contacto ? ` · <i>${esc(a.contacto)}</i>` : ''}${a.nota ? ` · <i>⚠ ${esc(a.nota)}</i>` : ''}`;
+/** Una persona en una lista para el líder: sus datos, sus cursos y, si algo no cuadra, el aviso de «contrastado con PCO». */
+const person = (a) => {
+  const bits = [`<b>${esc(a.name)}</b>`, `<a href="tel:${esc(a.phone)}">${esc(a.phone)}</a>`, `<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`];
+  if (a.city) bits.push(esc(a.city));
+  if (a.pco_url) bits.push(`<a href="${esc(a.pco_url)}">Perfil</a>`);
+  let line = bits.join(' · ');
+  if (a.cursos) line += `<br><span style="color:#71717a">${esc(a.cursos)} · Contrastado con PCO: ${esc(a.contrastado?.label ?? '')}</span>`;
+  if (a.contrastado && !a.contrastado.ok) line += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
+  return line;
+};
 const list = (items) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px">${items.map((a) => `<li>${person(a)}</li>`).join('')}</ul>`;
+const section = (title, items) => (items.length ? `<h2 style="font-size:16px">${title}</h2>${list(items)}` : '');
 const italic = (t) => (t ? p(`<i>${esc(t)}</i>`) : '');
+
 /** Lista de lo que falta. Si le faltan Bases 1 y Bases 2 y comparten enlace, van en una sola línea. */
 function faltanHtml(missing) {
   if (!missing.length) return '';
@@ -26,70 +37,46 @@ function faltanHtml(missing) {
 const first = (name) => String(name || '').split(' ')[0];
 
 /**
- * Email a la persona. Según su caso se usa una de estas plantillas (editables en el panel):
- * aún sin tiempo mínimo · sin ficha en PCO · le falta Bases 1/2 · lo tiene todo.
- * `assign` indica qué voluntarios se le han asignado (Bases / GC) para el texto condicional.
+ * Email a la persona que se apunta. Si aún no cumple el tiempo mínimo, aviso aparte (no se avisa al líder).
+ * En cualquier otro caso recibe un único email: lo que consta (o que no se encontró su ficha), lo que le falta
+ * si acaso, y que el líder del equipo la contactará esta semana.
  */
-function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort, assign }) {
-  // Sin ficha en Planning Center se le explica, pero igualmente recibe lo que le falta y un voluntario le llamará
-  const key = tenureShort ? 'applicant_tenure' : missing.length ? (notFoundInPco ? 'applicant_no_pco' : 'applicant_missing') : 'applicant_ready';
-  return render(key, {
-    vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '' },
-    flags: { bases: assign?.bases ?? (missing.includes('bases1') || missing.includes('bases2')), gc: assign?.gc ?? false },
-    blocks: {
-      faltan: faltanHtml(missing),
-      aviso_area: tenureShort ? '' : italic(app.area_notice),
-      aviso_equipo: italic(team.notice),
-    },
+function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort }) {
+  if (tenureShort) {
+    return render('applicant_tenure', {
+      vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '' },
+      blocks: { aviso_equipo: italic(team.notice) },
+    });
+  }
+  return render('applicant_received', {
+    vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '', cursos: courses.courseLine(app) },
+    flags: { encontrado: !notFoundInPco, no_encontrado: !!notFoundInPco },
+    blocks: { faltan: faltanHtml(missing), aviso_area: italic(app.area_notice), aviso_equipo: italic(team.notice) },
   });
 }
 
-const ctxFor = (a, team) => ({ nombre: first(a.name), nombre_completo: a.name, equipo: team || a.team || '', ciudad: a.city || '' });
-
-/** Aviso inmediato al líder por una persona lista para llamar. */
-function leaderReadyEmail({ app, team, unverified = [] }) {
-  return render('leader_ready', {
-    vars: ctxFor(app, team.name),
-    blocks: {
-      persona: list([app]),
-      sin_verificar: unverified.length ? p(`⚠ <b>Dato sin verificar:</b> dice haber hecho ${esc(unverified.join(', '))}, pero no consta en Planning Center. Confírmalo al llamarla.`) : '',
-    },
+/** Aviso inmediato al líder por cada solicitud, tenga o no completados Bases 1, Bases 2 y GC. */
+function leaderNoticeEmail({ app }) {
+  return render('leader_notice', {
+    vars: { nombre: first(app.name), nombre_completo: app.name, equipo: app.team, ciudad: app.city || '' },
+    blocks: { persona: list([app]) },
   });
 }
 
-/** Resumen semanal al líder. Cada sección solo aparece si tiene personas. */
-function leaderDigestEmail({ team, ready, followups, pending }) {
-  const h = (t) => `<h2 style="font-size:16px">${t}</h2>`;
+/** Lista de un líder: nuevas desde el último envío, a quien toca hacer seguimiento y el resto de su lista abierta. */
+function leaderDigestEmail({ team, nuevas, seguimiento, resto }) {
   return render('leader_digest', {
     vars: { equipo: team.name },
     blocks: {
-      seccion_llamar: ready.length ? h('📞 Llamar esta semana e invitar el domingo') + list(ready) : '',
-      seccion_seguimiento: followups.length ? h('🔁 Llamada de seguimiento (consolidar en el equipo)') + list(followups) : '',
-      seccion_pendientes: pending.length
-        ? h('⏳ Interesados que aún no tienen Bases 1, Bases 2 o GC (seguimiento opcional)') + list(pending) +
-          p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC también contactarán con ellos para ayudarles con lo que les falta (lo indicamos en cada persona).')
-        : '',
+      seccion_nuevas: section('🆕 Nuevas desde el último resumen', nuevas),
+      seccion_seguimiento: section('🔁 Toca hacer seguimiento', seguimiento),
+      seccion_resto: section('📋 Resto de tu lista', resto),
     },
   });
-}
-
-/** Aviso a un voluntario de Bases (asignación o resumen semanal). */
-function basesEmail({ items, digest, missing = [] }) {
-  const a = items[0].app;
-  return render(digest ? 'bases_digest' : 'bases_assigned', {
-    vars: ctxFor(a),
-    flags: { sin_bases1: missing.includes('bases1'), sin_bases2: missing.includes('bases2') || !missing.includes('bases1') },
-    blocks: { personas: list(items.map((i) => i.app)) },
-  });
-}
-
-/** Aviso a un voluntario de Grupos de Conexión (asignación o resumen semanal). */
-function gcEmail({ items, digest }) {
-  return render(digest ? 'gc_digest' : 'gc_assigned', { vars: ctxFor(items[0].app), blocks: { personas: list(items.map((i) => i.app)) } });
 }
 
 function adminAlertEmail(subject, detail) {
   return { subject, html: layout(subject, p(esc(detail)) + btn(`${config.appUrl}/panel`, 'Abrir el panel')), text: detail, enabled: true };
 }
 
-module.exports = { applicantEmail, leaderReadyEmail, leaderDigestEmail, basesEmail, gcEmail, adminAlertEmail };
+module.exports = { applicantEmail, leaderNoticeEmail, leaderDigestEmail, adminAlertEmail };

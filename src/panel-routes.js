@@ -6,12 +6,13 @@ const { db, tx, logEvent } = require('./db');
 const { requireAuth, requireAdmin } = require('./auth');
 const config = require('./config');
 const { TEAM_LABEL } = require('./teams');
+const courses = require('./courses');
 const et = require('./email-templates');
+const jobs = require('./jobs');
 const { getSetting, setSetting } = require('./db');
 const { fullApp, inDays, now, FOLLOWUP_DAYS } = require('./flow');
 
-const STATUSES = ['recibida', 'no_apto_aun', 'sin_pco', 'pendiente_bases', 'listo', 'contactado', 'visito', 'confirmado', 'no_continua'];
-const BASES_STATUSES = ['sin_contactar', 'contactado', 'registrado'];
+const STATUSES = ['recibida', 'no_apto_aun', 'listo', 'contactado', 'visito', 'confirmado', 'no_continua'];
 // Imágenes permitidas: se comprueba la firma real del archivo, no solo lo que declara el navegador. SVG queda fuera a propósito.
 const IMAGE_TYPES = {
   'image/png': { ext: 'png', ok: (b) => b.length > 8 && b.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) },
@@ -27,22 +28,10 @@ const str = (v, max = 300) => (typeof v === 'string' ? v.trim().slice(0, max) : 
 const flag = (v) => (v === false || v === 0 || v === '0' ? 0 : 1);
 const ids = (arr) => [...new Set((Array.isArray(arr) ? arr : []).map(Number).filter(Number.isInteger))];
 
-/** Condición SQL de lo que puede ver cada rol: admin todo; líder sus equipos y ciudades; Bases sus ciudades pendientes de Bases 2. */
-/**
- * `removed`: true = solo lo que la persona quitó de su lista; false = solo lo que sigue en su lista; undefined = todo (para poder restaurar).
- * Cada rol tiene su propia marca: el voluntario de Bases (bases_removed), el de GC (gc_removed) y el líder de equipo (leader_hidden).
- */
-function scopeOf(user, removed) {
-  const rm = (col) => (removed === undefined ? [] : [`a.${col} = ${removed ? 1 : 0}`]);
+/** Lo que puede ver cada rol: administración, todo; líder, las solicitudes de sus equipos y sus ciudades. */
+function scopeOf(user) {
   if (user.role === 'leader') {
-    return { where: ['a.team_id IN (SELECT team_id FROM leader_teams WHERE user_id = ?)', 'a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', ...rm('leader_hidden')], params: [user.id, user.id] };
-  }
-  if (user.role === 'bases') {
-    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', 'a.needs_bases = 1', "a.status NOT IN ('no_continua','no_apto_aun','sin_pco')", ...rm('bases_removed')], params: [user.id] };
-  }
-  if (user.role === 'gc') {
-    // Personas con Bases 1 que aún no están en un Grupo de Conexión, de sus ciudades
-    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', 'a.needs_gc = 1', "a.status NOT IN ('no_continua','no_apto_aun','sin_pco')", ...rm('gc_removed')], params: [user.id] };
+    return { where: ['a.team_id IN (SELECT team_id FROM leader_teams WHERE user_id = ?)', 'a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)'], params: [user.id, user.id] };
   }
   return { where: [], params: [] };
 }
@@ -56,30 +45,30 @@ function leadersOf(teamId, cityId) {
   return leadersStmt.all(teamId, cityId);
 }
 
-function visibleApplications(user, { status, q, removed } = {}, limit = 500) {
-  const { where, params } = scopeOf(user, !!removed);
+function visibleApplications(user, { status, q } = {}, limit = 500) {
+  const { where, params } = scopeOf(user);
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
-  const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.bases_status, a.followup_at, a.tenure_months,
-                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.bases_user_id,
-                       ${TEAM_LABEL} AS team, c.name AS city, bu.name AS bases_name, bu.email AS bases_email, bu.phone AS bases_phone,
-                       gu.name AS gc_name, gu.email AS gc_email, gu.phone AS gc_phone, a.gc_user_id, a.gc_status, a.needs_gc, a.needs_bases, a.bases_removed, a.gc_removed, a.leader_hidden, a.bases_form_before, a.bases_form_at, a.team_id, a.city_id
+  const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.followup_at, a.tenure_months,
+                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id,
+                       ${TEAM_LABEL} AS team, c.name AS city
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
-                     LEFT JOIN users bu ON bu.id = a.bases_user_id
-                     LEFT JOIN users gu ON gu.id = a.gc_user_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
-  // Solo la administración ve qué líder(es) de equipo tiene asignada cada persona (los del equipo y la ciudad de su solicitud)
-  if (user.role === 'admin') for (const r of rows) r.leaders = leadersOf(r.team_id, r.city_id);
+  for (const r of rows) {
+    r.contrastado = courses.contrastadoInfo(r);
+    // Solo la administración ve qué líder(es) de equipo tiene asignada cada persona (los del equipo y la ciudad de su solicitud)
+    if (user.role === 'admin') r.leaders = leadersOf(r.team_id, r.city_id);
+  }
   return rows;
 }
 
 /** ¿Puede este usuario ver/tocar esta solicitud? Consulta directa por id (no depende del límite de la lista). */
 function canTouch(user, id) {
-  const { where, params } = scopeOf(user); // sin filtrar por «quitadas»: también se puede tocar lo quitado (para restaurarlo)
+  const { where, params } = scopeOf(user);
   return !!db.prepare(`SELECT 1 FROM applications a WHERE a.id = ? ${where.map((w) => `AND ${w}`).join(' ')}`).get(id, ...params);
 }
 
-const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', sin_pco: 'Sin ficha (Bases 1)', pendiente_bases: 'Pendiente de Bases o GC', listo: 'Para llamar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
+const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', listo: 'Para contactar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
 const TENURE_LABEL = { 0: 'Menos de 6 meses', 6: '6-12 meses', 12: '1-2 años', 24: 'Más de 2 años' };
 /** Fecha en hora local (APP_TZ) y formato dd/mm/aaaa hh:mm. SQLite guarda «aaaa-mm-dd hh:mm:ss» en UTC; el resto, ISO. */
 function localDate(v, withTime = true) {
@@ -101,14 +90,14 @@ function csvCell(v) {
 function applicationsCsv(rows, { withLeaders = false } = {}) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
-    ...(withLeaders ? ['Líder de equipo'] : []), 'Voluntario Bases', 'Email voluntario Bases', 'Teléfono voluntario Bases', 'Estado en Bases', 'Voluntario GC', 'Email voluntario GC', 'Teléfono voluntario GC', 'Estado en GC', 'Ya rellenó el formulario de Bases antes de apuntarse', 'Próximo seguimiento', 'Última actualización'];
+    ...(withLeaders ? ['Líder de equipo'] : []), 'Contrastado con PCO', 'Motivo si no', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
     ...(withLeaders ? [(a.leaders || []).map((l) => [l.name || l.email, l.phone].filter(Boolean).join(' · ')).join(' / ') || 'Sin líder asignado'] : []),
-    a.bases_name, a.bases_email, a.bases_phone, a.bases_user_id ? String(a.bases_status).replace('_', ' ') : '', a.gc_name || a.gc_email, a.gc_email, a.gc_phone, a.gc_user_id ? String(a.gc_status).replace('_', ' ') : '', a.needs_bases && a.bases_form_before ? 'Sí' : '', localDate(a.followup_at, false), localDate(a.updated_at)]);
+    a.contrastado.label, a.contrastado.guidance || '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
-  return '\ufeff' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
+  return '﻿' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
 }
 
 /** Teléfono opcional: si se escribe, debe parecer un teléfono. */
@@ -124,14 +113,14 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   r.use(requireAuth);
 
   r.get('/applications.csv', (req, res) => {
-    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), removed: req.query.removed === '1' }, 20000);
+    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60) }, 20000);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="solicitudes-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.setHeader('Cache-Control', 'no-store');
     res.send(applicationsCsv(rows, { withLeaders: req.user.role === 'admin' }));
   });
 
-  r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), removed: req.query.removed === '1' })));
+  r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60) })));
 
   r.get('/applications/:id', (req, res) => {
     const id = Number(req.params.id);
@@ -139,9 +128,8 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ application: fullApp(id), events: db.prepare('SELECT * FROM application_events WHERE application_id = ? ORDER BY id DESC').all(id) });
   });
 
-  /** Borra una solicitud y su historial. Solo administración y líderes (dentro de lo suyo); los voluntarios de Bases no. */
+  /** Borra una solicitud y su historial (administración, o el líder dentro de lo suyo). */
   r.delete('/applications/:id', (req, res) => {
-    if (['bases', 'gc'].includes(req.user.role)) throw bad('Los voluntarios no pueden borrar solicitudes', 403);
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     db.prepare('DELETE FROM applications WHERE id = ?').run(id); // el historial se borra en cascada
@@ -149,34 +137,14 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ ok: true });
   });
 
-  /** Líderes (y admin): estado del seguimiento. Voluntarios de Bases: solo su estado de contacto. */
   r.patch('/applications/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     const a = fullApp(id);
-    const { status, bases_status: basesStatus, gc_status: gcStatus, removed, comment } = req.body || {};
-    // Quitar de mi lista / volver a mi lista. Cada rol tiene la suya: Bases, GC o el listado del líder de equipo.
-    if (removed !== undefined) {
-      const col = { bases: 'bases_removed', gc: 'gc_removed', leader: 'leader_hidden' }[req.user.role];
-      if (!col) throw bad('Solo los voluntarios y los líderes tienen una lista de la que quitar personas');
-      if (req.user.role === 'leader' && removed && !['pendiente_bases', 'sin_pco'].includes(a.status)) throw bad('Solo se pueden quitar del listado las personas que aún no lo tienen todo');
-      db.prepare(`UPDATE applications SET ${col} = ?, updated_at = ? WHERE id = ?`).run(removed ? 1 : 0, now(), id);
-      logEvent(id, req.user.id, removed ? 'quitada_de_lista' : 'vuelta_a_lista', col);
-    }
-    if (gcStatus !== undefined) {
-      if (!BASES_STATUSES.includes(gcStatus)) throw bad('Estado de GC no válido');
-      db.prepare('UPDATE applications SET gc_status=?, gc_removed=CASE WHEN ?=\'registrado\' THEN 1 ELSE gc_removed END, updated_at=? WHERE id=?').run(gcStatus, gcStatus, now(), id); // «ya está en un GC» la saca de la lista
-      logEvent(id, req.user.id, 'gc_status', gcStatus);
-    }
-    if (basesStatus !== undefined) {
-      if (!BASES_STATUSES.includes(basesStatus)) throw bad('Estado de Bases no válido');
-      db.prepare('UPDATE applications SET bases_status=?, bases_removed=CASE WHEN ?=\'registrado\' THEN 1 ELSE bases_removed END, updated_at=? WHERE id=?').run(basesStatus, basesStatus, now(), id); // «ya está apuntado en Bases» la saca de la lista
-      logEvent(id, req.user.id, 'bases_status', basesStatus);
-    }
+    const { status, comment } = req.body || {};
     if (status !== undefined) {
-      if (['bases', 'gc'].includes(req.user.role)) throw bad('Solo el líder puede cambiar este estado', 403);
       if (!['contactado', 'visito', 'confirmado', 'no_continua'].includes(status)) throw bad('Estado no válido');
-      const followup = status === 'contactado' ? inDays(FOLLOWUP_DAYS) : status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
+      const followup = status === 'contactado' || status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
       db.prepare('UPDATE applications SET status=?, followup_at=?, updated_at=? WHERE id=?').run(status, followup, now(), id);
       logEvent(id, req.user.id, 'status', status);
       if (status === 'confirmado' && a.pco_person_id) {
@@ -277,6 +245,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   const tplOr404 = (key) => { if (!et.TEMPLATES[key]) throw bad('Email no encontrado', 404); return key; };
   const fields = (b) => ({ subject: str(b.subject, 400), heading: str(b.heading, 300), body: typeof b.body === 'string' ? b.body.replace(/\r\n/g, '\n').slice(0, 9000).trim() : '' });
 
+  const scheduleView = () => ({ slots: jobs.digestSchedule(), tz: config.tz });
   admin.get('/emails', (_req, res) => res.json({ groups: et.GROUPS, templates: Object.keys(et.TEMPLATES).map(tplView), schedule: scheduleView() }));
 
   admin.put('/emails/:key', (req, res) => {
@@ -322,18 +291,18 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ ok: true, to: req.user.email, sent: !!out.sent });
   }));
 
-  const DIGEST = { day: 'digest_day', hour: 'digest_hour' };
-  const scheduleView = () => ({
-    day: getSetting(DIGEST.day) === null ? config.digestDay : Number(getSetting(DIGEST.day)),
-    hour: getSetting(DIGEST.hour) === null ? config.digestHour : Number(getSetting(DIGEST.hour)),
-    tz: config.tz,
-  });
   admin.put('/email-schedule', (req, res) => {
-    const day = Number(req.body?.day), hour = Number(req.body?.hour);
-    if (!Number.isInteger(day) || day < 0 || day > 6) throw bad('Día no válido');
-    if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw bad('Hora no válida');
-    setSetting(DIGEST.day, day);
-    setSetting(DIGEST.hour, hour);
+    const raw = Array.isArray(req.body?.slots) ? req.body.slots : [];
+    const slots = raw.map((s) => ({ day: Number(s.day), hour: Number(s.hour) }));
+    if (!slots.length) throw bad('Añade al menos un envío');
+    if (slots.length > 7) throw bad('Como mucho, 7 envíos');
+    for (const s of slots) {
+      if (!Number.isInteger(s.day) || s.day < 0 || s.day > 6) throw bad('Día no válido');
+      if (!Number.isInteger(s.hour) || s.hour < 0 || s.hour > 23) throw bad('Hora no válida');
+    }
+    const dupe = new Set(slots.map((s) => `${s.day}-${s.hour}`));
+    if (dupe.size !== slots.length) throw bad('Hay envíos repetidos (mismo día y hora)');
+    jobs.setDigestSchedule(slots);
     res.json(scheduleView());
   });
 
@@ -342,22 +311,21 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     city_ids: db.prepare('SELECT city_id FROM user_cities WHERE user_id = ?').all(u.id).map((x) => x.city_id),
     team_ids: db.prepare('SELECT team_id FROM leader_teams WHERE user_id = ?').all(u.id).map((x) => x.team_id),
   });
-  admin.get('/users', (_req, res) => res.json(db.prepare("SELECT id,email,name,role,phone,active FROM users ORDER BY role, name, email").all().map(userRow)));
+  admin.get('/users', (_req, res) => res.json(db.prepare("SELECT id,email,name,role,phone,active FROM users ORDER BY name, email").all().map(userRow)));
   function saveUser(id, b) {
     tx(() => {
       db.exec(`DELETE FROM user_cities WHERE user_id = ${id}; DELETE FROM leader_teams WHERE user_id = ${id}`);
       for (const c of ids(b.city_ids)) db.prepare('INSERT OR IGNORE INTO user_cities VALUES (?,?)').run(id, c);
-      if (b.role === 'leader') for (const t of ids(b.team_ids)) db.prepare('INSERT OR IGNORE INTO leader_teams VALUES (?,?)').run(id, t);
+      for (const t of ids(b.team_ids)) db.prepare('INSERT OR IGNORE INTO leader_teams VALUES (?,?)').run(id, t);
     });
   }
   admin.post('/users', (req, res) => {
     const b = req.body || {};
     const email = str(b.email, 200).toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Email no válido');
-    if (!['leader', 'bases', 'gc', 'admin'].includes(b.role)) throw bad('Rol no válido');
     let id;
     const phone = phoneOf(b.phone);
-    try { id = Number(db.prepare('INSERT INTO users (email,name,role,phone) VALUES (?,?,?,?)').run(email, str(b.name, 100), b.role, phone).lastInsertRowid); }
+    try { id = Number(db.prepare("INSERT INTO users (email,name,role,phone) VALUES (?,?,'leader',?)").run(email, str(b.name, 100), phone).lastInsertRowid); }
     catch { throw bad('Ese email ya existe'); }
     saveUser(id, b);
     res.json({ id });
@@ -369,13 +337,15 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     if (!u) throw bad('No encontrado', 404);
     if (id === req.user.id && b.active === false) throw bad('No puedes desactivarte a ti mismo');
     db.prepare('UPDATE users SET name=?, phone=?, active=? WHERE id=?').run(str(b.name, 100), phoneOf(b.phone), flag(b.active ?? 1), id);
-    saveUser(id, { ...b, role: u.role });
+    saveUser(id, b);
     res.json({ ok: true });
   });
   admin.delete('/users/:id', (req, res) => {
     const id = Number(req.params.id);
     if (id === req.user.id) throw bad('No puedes eliminarte a ti mismo');
-    db.prepare('UPDATE applications SET bases_user_id = NULL WHERE bases_user_id = ?').run(id);
+    const u = db.prepare('SELECT role FROM users WHERE id = ?').get(id);
+    if (!u) throw bad('No encontrado', 404);
+    if (u.role === 'admin') throw bad('No se puede borrar a un administrador desde aquí');
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
     res.json({ ok: true });
   });

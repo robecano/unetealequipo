@@ -13,7 +13,7 @@ process.env.ADMIN_NOTIFY_EMAIL = 'admin@test.es';
 
 const { db } = require('../src/db');
 const { createFlow } = require('../src/flow');
-const { fieldDone, phoneKey } = require('../src/pco');
+const courses = require('../src/courses');
 
 const sent = [];
 const notes = [];
@@ -31,29 +31,32 @@ const flow = createFlow({
 const city = Number(db.prepare("INSERT INTO cities (name) VALUES ('Madrid')").run().lastInsertRowid);
 const kids = Number(db.prepare("INSERT INTO teams (name, min_months, notice) VALUES ('Kids', 12, 'Entrevista previa')").run().lastInsertRowid);
 const av = Number(db.prepare("INSERT INTO teams (name) VALUES ('AV')").run().lastInsertRowid);
-const user = (email, role) => Number(db.prepare('INSERT INTO users (email, role) VALUES (?,?)').run(email, role).lastInsertRowid);
-const leader = user('lider@test.es', 'leader');
+const leader = Number(db.prepare("INSERT INTO users (email, role) VALUES ('lider@test.es', 'leader')").run().lastInsertRowid);
 db.prepare('INSERT INTO user_cities VALUES (?,?)').run(leader, city);
 db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(leader, av);
-const bases = user('bases@test.es', 'bases');
-db.prepare('INSERT INTO user_cities VALUES (?,?)').run(bases, city);
 
-function apply(team, tenure = 24) {
-  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana Ruiz','ana@x.es','600111222',?,?,?)`).run(city, team, tenure).lastInsertRowid);
+function apply(team, tenure = 24, self = {}) {
+  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,self_bases1,self_bases2,self_gc) VALUES ('Ana Ruiz','ana@x.es','600111222',?,?,?,?,?,?)`)
+    .run(city, team, tenure, +!!self.b1, +!!self.b2, +!!self.gc).lastInsertRowid);
   return id;
 }
 const reset = () => { sent.length = 0; notes.length = 0; };
 const to = (addr) => sent.filter((m) => [].concat(m.to).includes(addr));
 
-test('fieldDone: sin requisitos basta cualquier valor; con requisitos, todos', () => {
-  assert.equal(fieldDone([], []), false);
-  assert.equal(fieldDone(['x'], []), true);
-  assert.equal(fieldDone(['Asistencia Sesión 1'], ['Asistencia Sesión 1', 'Asistencia Sesión 2']), false);
-  assert.equal(fieldDone(['asistencia sesión 2', 'Asistencia Sesión 1'], ['Asistencia Sesión 1', 'Asistencia Sesión 2']), true);
-  assert.equal(phoneKey('+34 600 11 22 33'), phoneKey('0034600112233'));
+test('courses.contrastadoInfo: sin ficha, con mezcla y todo bien', () => {
+  assert.equal(courses.contrastadoInfo({ pco_person_id: null }).ok, false);
+  assert.equal(courses.contrastadoInfo({ pco_person_id: null }).reason, 'sin_ficha');
+  const mism = courses.contrastadoInfo({ pco_person_id: '1', pco_bases1: 0, self_bases1: 1, pco_bases2: 1, self_bases2: 1, pco_gc: 1, self_gc: 0 });
+  assert.equal(mism.ok, false);
+  assert.equal(mism.reason, 'mismatch');
+  assert.deepEqual(mism.mismatched, ['Bases 1']);
+  assert.match(mism.guidance, /equipo de PCO de tu campus/);
+  const ok = courses.contrastadoInfo({ pco_person_id: '1', pco_bases1: 1, self_bases1: 1, pco_bases2: 1, self_bases2: 0, pco_gc: 1, self_gc: 1 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.label, 'Sí');
 });
 
-test('antigüedad insuficiente para Kids: avisa a la persona, no al líder ni a PCO', async () => {
+test('tiempo mínimo insuficiente: aviso a la persona, sin tocar Planning Center ni avisar al líder', async () => {
   reset();
   const id = apply(kids, 6);
   assert.equal(await flow.process(id), 'no_apto_aun');
@@ -62,70 +65,72 @@ test('antigüedad insuficiente para Kids: avisa a la persona, no al líder ni a 
   assert.equal(notes.length, 0);
 });
 
-test('no existe en PCO: se trata como si no tuviera nada (voluntario de Bases y email con lo que le falta)', async () => {
+test('no existe en Planning Center: se trata como si no tuviera nada, y el líder recibe el aviso igualmente', async () => {
   reset(); person = null;
   const id = apply(av);
-  assert.equal(await flow.process(id), 'pendiente_bases');
-  const html = to('ana@x.es')[0].html;
-  assert.match(html, /No hemos encontrado tu ficha/);
-  assert.match(html, /Bases 1 y Bases 2<\/b> — <a href="https:\/\/hillsong\.es\/bases"/);
-  assert.match(html, /Grupo de Conexión/);
-  assert.match(html, /Un voluntario de Bases de tu ciudad te llamará/);
-  assert.equal(to('bases@test.es').length, 1);
-  assert.equal(to('lider@test.es').length, 0);
-  const row = db.prepare('SELECT status, pco_person_id, pco_bases1, needs_bases, needs_gc, bases_user_id FROM applications WHERE id=?').get(id);
-  assert.deepEqual([row.status, row.pco_person_id, row.pco_bases1, row.needs_bases, row.needs_gc, row.bases_user_id], ['pendiente_bases', null, null, 1, 0, bases]);
-  assert.equal(notes.length, 0, 'sin ficha no hay dónde escribir la nota');
+  assert.equal(await flow.process(id), 'listo');
+  const persona = to('ana@x.es')[0];
+  assert.match(persona.html, /No hemos encontrado tu ficha/);
+  const lider = to('lider@test.es')[0];
+  assert.ok(lider, 'el líder recibe aviso aunque no haya ficha');
+  assert.match(lider.html, /Contrastado con PCO: No/);
+  const row = db.prepare('SELECT status, pco_person_id, pco_bases1 FROM applications WHERE id=?').get(id);
+  assert.equal(row.status, 'listo');
+  assert.equal(row.pco_person_id, null);
+  assert.equal(row.pco_bases1, null);
 });
 
-test('tiene Bases 1 y 2: nota en PCO, avisa al líder y programa seguimiento', async () => {
+test('con ficha y todo completo: el líder ve «Contrastado con PCO: Sí» y sus cursos', async () => {
   reset(); person = { id: '55', url: 'https://pco/55' }; course = { bases1: true, bases2: true, gc: true };
   const id = apply(av);
   assert.equal(await flow.process(id), 'listo');
   assert.equal(notes.length, 1);
   assert.match(notes[0][1], /Interesado en servir en AV/);
-  assert.equal(to('lider@test.es').length, 1);
-  assert.match(to('lider@test.es')[0].html, /esta semana/);
+  const lider = to('lider@test.es')[0];
+  assert.match(lider.html, /Bases 1: Sí · Bases 2: Sí · GC: Sí/);
+  assert.match(lider.html, /Contrastado con PCO: Sí/);
+  assert.doesNotMatch(lider.html, /⚠/);
   const row = db.prepare('SELECT * FROM applications WHERE id=?').get(id);
   assert.ok(row.followup_at);
   assert.equal(row.pco_person_id, '55');
 });
 
-test('falta Bases 2: se asigna voluntario de Bases y el líder no recibe aviso inmediato', async () => {
-  reset(); course = { bases1: true, bases2: false, gc: false };
+test('con ficha pero le falta algo: la persona ve lo que falta y el líder recibe el aviso igualmente (sin bloqueo)', async () => {
+  reset(); person = { id: '56', url: 'https://pco/56' }; course = { bases1: true, bases2: false, gc: false };
   const id = apply(av);
-  assert.equal(await flow.process(id), 'pendiente_bases');
-  const row = db.prepare('SELECT * FROM applications WHERE id=?').get(id);
-  assert.equal(row.bases_user_id, bases);
-  assert.match(to('ana@x.es')[0].html, /hillsong\.es\/bases\b/);
-  assert.match(to('ana@x.es')[0].html, /Grupo de Conexión/);
-  assert.equal(to('bases@test.es').length, 1);
-  assert.equal(to('lider@test.es').length, 0);
+  assert.equal(await flow.process(id), 'listo');
+  const persona = to('ana@x.es')[0];
+  assert.match(persona.html, /Bases 2/);
+  assert.match(persona.html, /hillsong\.es\/gc/);
+  assert.match(persona.html, /líder de tu equipo revisará tu solicitud/);
+  const lider = to('lider@test.es')[0];
+  assert.ok(lider, 'ya no hay bloqueo: el líder siempre recibe el aviso');
+  assert.match(lider.html, /Bases 1: Sí · Bases 2: No · GC: No/);
 });
 
-test('resumen semanal: el líder ve listos y pendientes; al hacer Bases 2 pasan a listo', async () => {
-  reset();
-  await flow.sendDigests();
-  const digest = to('lider@test.es')[0];
-  assert.ok(digest);
-  assert.match(digest.html, /aún no tienen Bases 1, Bases 2 o GC \(seguimiento opcional\)/);
-  assert.match(digest.html, /Le falta: Bases 2/);
-  assert.match(digest.html, /Llamar esta semana/);
-  assert.equal(to('bases@test.es').length, 1);
-  reset(); course = { bases1: true, bases2: true, gc: true };
-  assert.ok((await flow.recheckPending()) >= 1);
-  assert.ok(to('lider@test.es').length >= 1);
+test('declara tener algo que Planning Center no confirma: se acepta el formulario, se anota aparte y el líder ve el aviso de contraste', async () => {
+  reset(); person = { id: '57', url: 'https://pco/57' }; course = { bases1: true, bases2: false, gc: true };
+  const id = apply(av, 24, { b2: true });
+  await flow.process(id);
+  assert.equal(notes.length, 2);
+  assert.match(notes[0][1], /^Interesado en servir en AV/);
+  assert.match(notes[1][1], /^La persona dice haber hecho Bases 2, pero no consta en Planning Center/);
+  const lider = to('lider@test.es')[0];
+  assert.match(lider.html, /Bases 1: Sí · Bases 2: Sí · GC: Sí/, 'lo declarado cuenta como hecho');
+  assert.match(lider.html, /Contrastado con PCO: No/);
+  assert.match(lider.html, /equipo de PCO de tu campus/);
 });
 
-test('sin líder asignado: se avisa al administrador', async () => {
-  reset(); person = { id: '56' }; course = { bases1: true, bases2: true, gc: true };
+test('sin líder asignado: se avisa a la administración y no a nadie más', async () => {
+  reset(); person = { id: '58' }; course = { bases1: true, bases2: true, gc: true };
   const other = Number(db.prepare("INSERT INTO teams (name) VALUES ('Sin líder')").run().lastInsertRowid);
   const id = apply(other);
   await flow.process(id);
   assert.equal(to('admin@test.es').length, 1);
+  assert.match(to('admin@test.es')[0].subject, /Sin líder para Sin líder/);
 });
 
-test('error de PCO: la solicitud queda "recibida" para reintentar', async () => {
+test('error de Planning Center: la solicitud queda «recibida» para reintentar, y no se envía nada', async () => {
   reset();
   const broken = createFlow({ pco: { findPerson: async () => { throw new Error('PCO caído'); } }, mail: { sendMail: async (m) => sent.push(m) } });
   const id = apply(av);
@@ -134,52 +139,50 @@ test('error de PCO: la solicitud queda "recibida" para reintentar', async () => 
   assert.equal(sent.length, 0);
 });
 
-test('si dijo Sí y en PCO no consta: se cree el formulario, se avisa al líder y se marca sin verificar', async () => {
-  reset(); person = { id: '57', url: 'https://pco/57' }; course = { bases1: true, bases2: false, gc: true };
+test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y no reenvía el aviso al líder', async () => {
+  reset(); person = null; course = { bases1: false, bases2: false, gc: false };
   const id = apply(av);
-  db.prepare('UPDATE applications SET self_bases2 = 1 WHERE id = ?').run(id);
-  assert.equal(await flow.process(id), 'listo');
-  const html = to('lider@test.es')[0].html;
-  assert.match(html, /Dato sin verificar/);
-  assert.match(html, /Bases 2/);
-  assert.equal(notes.length, 2);
-  assert.match(notes[0][1], /^Interesado en servir en AV/);
-  assert.match(notes[1][1], /^La persona dice haber hecho Bases 2, pero no consta en Planning Center/);
-  const row = db.prepare('SELECT bases_user_id, pco_bases2, self_bases2 FROM applications WHERE id=?').get(id);
-  assert.equal(row.bases_user_id, null);
-  assert.equal(row.pco_bases2, 0);
-});
-
-test('si dijo No y en PCO no consta: sigue el camino de Bases (sin cambios)', async () => {
-  reset(); person = { id: '58' }; course = { bases1: true, bases2: false, gc: true };
-  const id = apply(av);
-  assert.equal(await flow.process(id), 'pendiente_bases');
-  assert.equal(to('lider@test.es').length, 0);
-});
-
-test('varias cosas declaradas sin constar: una sola nota con todo, redactada en español', async () => {
-  reset(); person = { id: '59' }; course = { bases1: false, bases2: false, gc: false };
-  const id = apply(av);
-  db.prepare('UPDATE applications SET self_bases1=1, self_bases2=1, self_gc=1 WHERE id=?').run(id);
   await flow.process(id);
-  assert.match(notes[1][1], /La persona dice haber hecho Bases 1, haber hecho Bases 2 y tener un GC, pero no consta/);
+  assert.equal(to('lider@test.es').length, 1);
+  reset(); person = { id: '900', url: 'https://pco/900' }; course = { bases1: true, bases2: false, gc: false };
+  const n = await flow.refreshCourses();
+  assert.ok(n >= 1);
+  const row = db.prepare('SELECT pco_person_id, pco_bases1, note_synced FROM applications WHERE id=?').get(id);
+  assert.equal(row.pco_person_id, '900');
+  assert.equal(row.pco_bases1, 1);
+  // refreshCourses() recorre TODAS las solicitudes abiertas, así que también enlaza (y anota) la de la prueba
+  // «no existe en Planning Center» de más arriba, que se quedó sin ficha; por eso no forzamos notes.length === 1.
+  assert.ok(notes.some(([, t]) => t.startsWith('Interesado en servir en AV')));
+  assert.equal(to('lider@test.es').length, 0, 'no se reenvía: el líder ya lo vio al apuntarse');
 });
 
-test('si falla la segunda nota, el reintento escribe solo la que faltaba', async () => {
-  const written = []; let fail = true;
-  const f = createFlow({
-    pco: { findPerson: async () => ({ id: '60' }), getCourseStatus: async () => ({ bases1: true, bases2: false, gc: true }),
-      addNote: async (id, t) => { if (t.startsWith('La persona dice') && fail) throw new Error('PCO 500'); written.push(t); } },
-    mail: { sendMail: async () => {} },
-  });
-  const id = apply(av);
-  db.prepare('UPDATE applications SET self_bases2=1 WHERE id=?').run(id);
-  await f.process(id);
-  assert.equal(written.length, 1);
-  assert.equal(db.prepare('SELECT note_synced n FROM applications WHERE id=?').get(id).n, 0);
-  fail = false;
-  await f.retryNotes();
-  assert.equal(written.length, 2);
-  assert.match(written[1], /^La persona dice/);
-  assert.equal(db.prepare('SELECT note_synced n FROM applications WHERE id=?').get(id).n, 1);
+test('resumen: nuevas, seguimiento y resto se reparten sin solaparse, y todas llevan sus cursos', async () => {
+  const c2 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Resumen')").run().lastInsertRowid);
+  const t2 = Number(db.prepare("INSERT INTO teams (name) VALUES ('Resumen equipo')").run().lastInsertRowid);
+  const l2 = Number(db.prepare("INSERT INTO users (email, role) VALUES ('lider2@test.es', 'leader')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(l2, c2);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(l2, t2);
+  const f2 = createFlow({ pco: { findPerson: async () => ({ id: '1' }), getCourseStatus: async () => ({ bases1: true, bases2: true, gc: true }) }, mail: { sendMail: async (m) => sent.push(m) } });
+  reset();
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,pco_bases2,pco_gc,followup_at,created_at) VALUES ('Vieja Pendiente','v@x.es','600',?,?,24,'listo','1',1,0,0,NULL,'2020-01-01 00:00:00')`).run(c2, t2);
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,pco_bases2,pco_gc,followup_at,created_at) VALUES ('Toca Seguimiento','s@x.es','600',?,?,24,'contactado','1',1,1,1,'2020-01-01T00:00:00.000Z','2020-01-01 00:00:00')`).run(c2, t2);
+  await f2.sendDigests();
+  const first = to('lider2@test.es')[0];
+  assert.ok(first);
+  assert.doesNotMatch(first.html, /Nuevas desde el último resumen/, 'primer envío: sin marca previa, nada es «nuevo»');
+  assert.match(first.html, /Toca hacer seguimiento/);
+  assert.match(first.html, /Toca Seguimiento/);
+  assert.match(first.html, /Resto de tu lista/);
+  assert.match(first.html, /Vieja Pendiente/);
+
+  reset();
+  const nueva = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Recien Llegada','r@x.es','600',?,?,24)`).run(c2, t2).lastInsertRowid);
+  await f2.process(nueva);
+  reset();
+  await f2.sendDigests();
+  const second = to('lider2@test.es')[0];
+  assert.match(second.html, /Nuevas desde el último resumen/);
+  assert.match(second.html, /Recien Llegada/);
+  const nuevasBlock = second.html.split('Nuevas desde el último resumen')[1].split('</ul>')[0];
+  assert.doesNotMatch(nuevasBlock, /Vieja Pendiente|Toca Seguimiento/);
 });

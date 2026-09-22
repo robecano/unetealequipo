@@ -22,27 +22,22 @@ const VARS = {
   nombre_completo: { desc: 'Nombre y apellidos' },
   equipo: { desc: 'Equipo elegido (Área › Subequipo)' },
   ciudad: { desc: 'Ciudad' },
+  cursos: { desc: 'Bases 1, Bases 2 y GC: «Bases 1: Sí · Bases 2: No · GC: Sí»' },
   url_panel: { desc: 'Enlace al panel' },
   enlace_bases: { desc: 'Enlace de Bases (hillsong.es/bases)' },
-  enlace_bases1: { desc: 'Enlace de Bases 1 (igual que el de Bases salvo que se configure otro)' },
-  enlace_bases2: { desc: 'Enlace de Bases 2 (igual que el de Bases salvo que se configure otro)' },
   enlace_gc: { desc: 'Enlace de Grupos de Conexión (hillsong.es/gc)' },
-  faltan: { desc: 'Lista de lo que le falta (Bases 1, Bases 2, GC) con sus enlaces', block: true },
+  faltan: { desc: 'Lista de lo que le falta (Bases 1, Bases 2, GC) con sus enlaces (vacío si no le falta nada)', block: true },
   aviso_area: { desc: 'Aviso del área (p. ej. organización y gestión)', block: true },
   aviso_equipo: { desc: 'Aviso del subequipo (p. ej. entrevista previa)', block: true },
-  persona: { desc: 'Datos de la persona: nombre, teléfono, email, ciudad y perfil', block: true },
-  personas: { desc: 'Lista de personas con sus datos', block: true },
-  sin_verificar: { desc: 'Aviso ⚠ si dice tener algo que no consta en Planning Center', block: true },
-  seccion_llamar: { desc: 'Sección «Llamar esta semana» (solo si hay gente)', block: true },
-  seccion_seguimiento: { desc: 'Sección «Llamada de seguimiento» (solo si hay gente)', block: true },
-  seccion_pendientes: { desc: 'Sección «Interesados que aún no tienen Bases 1, Bases 2 o GC» (seguimiento opcional, solo si hay gente)', block: true },
+  persona: { desc: 'Datos de la persona: nombre, teléfono, email, ciudad, perfil, sus cursos y si está contrastado con Planning Center', block: true },
+  seccion_nuevas: { desc: 'Personas nuevas desde el último envío (solo si hay alguna)', block: true },
+  seccion_seguimiento: { desc: 'A quien toca hacer una llamada de seguimiento (solo si hay alguien)', block: true },
+  seccion_resto: { desc: 'El resto de la lista abierta (solo si hay alguien)', block: true },
 };
 // Condicionales: {{#bases}}texto{{/bases}} solo se muestra si se cumple.
 const FLAGS = {
-  bases: 'Se le ha asignado un voluntario de Bases',
-  gc: 'Se le ha asignado un voluntario de GC',
-  sin_bases1: 'Le falta Bases 1',
-  sin_bases2: 'Le falta Bases 2',
+  encontrado: 'Se ha encontrado su ficha en Planning Center',
+  no_encontrado: 'No se ha encontrado su ficha en Planning Center',
 };
 
 const FOOT = `[[Abrir mi panel|{{url_panel}}]]`;
@@ -58,71 +53,29 @@ const TEMPLATES = {
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
     body: `${HELLO}\n\nPara servir en este equipo necesitamos que lleves algo más de tiempo en la iglesia. Por ahora no avisaremos al líder, pero te invitamos a seguir creciendo y conectando; puedes elegir otro equipo o volver a apuntarte más adelante.\n\n{{aviso_equipo}}`,
   },
-  applicant_no_pco: {
-    group: 'persona', title: 'No aparece en Planning Center', to: 'La persona que se apunta',
-    when: 'En cuanto se apunta y no hay ninguna ficha con su email o teléfono en Planning Center. Se trata como si no tuviera nada (ni Bases 1, ni Bases 2, ni GC): recibe lo que le falta y un voluntario de Bases le llama.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'faltan', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['bases', 'gc'], required: ['faltan'],
+  applicant_received: {
+    group: 'persona', title: 'Solicitud recibida', to: 'La persona que se apunta',
+    when: 'En cuanto se apunta y llega al tiempo mínimo del equipo. Le dice lo que consta (o que no se encontró su ficha), lo que le falta si acaso, y que el líder la contactará esta semana. El líder recibe su aviso a la vez.',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'cursos', 'faltan', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['encontrado', 'no_encontrado'], required: [],
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nNo hemos encontrado tu ficha en nuestro sistema, así que todavía no tienes registrado ningún paso. Estos son los que necesitas:\n\n{{faltan}}\n\n{{#bases}}Un voluntario de Bases de tu ciudad te llamará para invitarte a apuntarte a Bases ({{enlace_bases}}) y contarte cómo funciona (horarios, agenda…).{{/bases}}\n\nCuando lo tengas todo, el líder del equipo te llamará.\n\n${NOTICES}`,
+    body: `${HELLO}\n\n{{#no_encontrado}}No hemos encontrado tu ficha en nuestro sistema, así que no hemos podido comprobar tus pasos (Bases 1, Bases 2 y GC).{{/no_encontrado}}\n\n{{#encontrado}}Esto es lo que tenemos registrado: {{cursos}}.{{/encontrado}}\n\n{{faltan}}\n\nEl líder de tu equipo revisará tu solicitud y te contactará esta semana.\n\n${NOTICES}`,
   },
-  applicant_missing: {
-    group: 'persona', title: 'Le falta Bases 1, Bases 2 o GC', to: 'La persona que se apunta',
-    when: 'En cuanto se apunta y le falta alguno de los tres (según Planning Center y lo que dijo en el formulario).',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'faltan', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['bases', 'gc'], required: ['faltan'],
-    subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nPara poder servir necesitas completar estos pasos:\n\n{{faltan}}\n\n{{#bases}}Un voluntario de Bases de tu ciudad te llamará para invitarte a apuntarte a Bases ({{enlace_bases}}) y contarte cómo funciona (horarios, agenda…).{{/bases}}\n\n{{#gc}}Un voluntario de Grupos de Conexión de tu ciudad te llamará para invitarte a apuntarte a un GC ({{enlace_gc}}) y explicarte por qué son importantes, qué son y cómo funcionan.{{/gc}}\n\nCuando lo tengas todo, el líder del equipo te llamará.\n\n${NOTICES}`,
-  },
-  applicant_ready: {
-    group: 'persona', title: 'Lo tiene todo hecho (Bases 1, Bases 2 y GC)', to: 'La persona que se apunta',
-    when: 'En cuanto se apunta y ya tiene Bases 1, Bases 2 y GC. El líder recibe su aviso a la vez.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'aviso_area', 'aviso_equipo'], flags: [], required: [],
-    subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\nTienes todos los pasos hechos. El líder del equipo te llamará esta semana y te invitará a visitar el equipo el próximo domingo.\n\n${NOTICES}`,
-  },
-  leader_ready: {
-    group: 'lider', title: 'Persona lista para llamar', to: 'Los líderes de ese equipo y ciudad',
-    when: 'En cuanto alguien con Bases 1, Bases 2 y GC se apunta a su equipo. También cuando una persona pendiente completa lo que le faltaba (se comprueba con el resumen semanal). Si a alguien le falta algo, le llega en el listado opcional del resumen semanal.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'persona', 'sin_verificar', 'url_panel'], flags: [], required: ['persona'],
-    subject: 'Para llamar esta semana: {{nombre_completo}} ({{equipo}})', heading: 'Nueva persona para tu equipo: {{equipo}}',
-    body: `Esta persona tiene Bases 1, Bases 2 y GC y quiere servir en **{{equipo}}**:\n\n{{persona}}\n\n{{sin_verificar}}\n\n**Qué debes hacer:** llámala **esta semana** e invítala a visitar el equipo **este domingo**. La semana siguiente haz una llamada de seguimiento para consolidar que ya es parte del equipo.\n\n${FOOT}`,
+  leader_notice: {
+    group: 'lider', title: 'Nueva solicitud para tu equipo', to: 'Los líderes de ese equipo y ciudad',
+    when: 'En cuanto alguien solicita servir en su equipo y ciudad, tenga o no completados Bases 1, Bases 2 y GC. La ficha indica su estado y si está bien contrastado con Planning Center.',
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'persona', 'url_panel'], flags: [], required: ['persona'],
+    subject: 'Nueva persona para {{equipo}}: {{nombre_completo}}', heading: 'Nueva persona para tu equipo: {{equipo}}',
+    body: `Esta persona ha solicitado servir en **{{equipo}}**:\n\n{{persona}}\n\n**Qué debes hacer:** ponte en contacto con ella **esta semana** e invítala a visitar el equipo **este domingo**. La semana siguiente haz una llamada de seguimiento para consolidar que ya es parte del equipo.\n\n${FOOT}`,
   },
   leader_digest: {
-    group: 'lider', title: 'Resumen semanal', to: 'Cada líder, un email por equipo',
-    when: 'Una vez por semana (día y hora en «Cuándo se envían»). Tres listados: a quién llamar, seguimientos, y un listado aparte y opcional de interesados que aún no tienen Bases 1, Bases 2 o GC (indica qué le falta a cada uno). Solo se envía si hay alguien en alguna sección.',
-    vars: ['equipo', 'seccion_llamar', 'seccion_seguimiento', 'seccion_pendientes', 'url_panel'], flags: [], required: ['seccion_llamar', 'seccion_seguimiento', 'seccion_pendientes'],
-    subject: 'Resumen semanal · {{equipo}}', heading: 'Tu equipo esta semana',
-    body: `Resumen semanal de **{{equipo}}**.\n\n{{seccion_llamar}}\n\n{{seccion_seguimiento}}\n\n{{seccion_pendientes}}\n\n${FOOT}`,
-  },
-  bases_assigned: {
-    group: 'bases', title: 'Posible seguimiento: persona a la que le falta Bases', to: 'El voluntario de Bases de su ciudad (reparto entre los que haya)',
-    when: 'En cuanto alguien solicita servir y le falta Bases 1 o Bases 2. No hace falta que tenga nada más: es una persona de posible seguimiento.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'personas', 'enlace_bases', 'url_panel'], flags: ['sin_bases1', 'sin_bases2'], required: ['personas'],
-    subject: 'Posible seguimiento para Bases: {{nombre_completo}}', heading: 'Posible seguimiento de Bases',
-    body: `Esta persona ha solicitado servir en **{{equipo}}** y todavía no ha completado Bases. Es una persona de posible seguimiento:\n\n{{personas}}\n\nSi puedes, llámala para invitarla a apuntarse a Bases: {{enlace_bases}}\n\nCuéntale también cómo funciona (horarios, agenda…). {{#sin_bases1}}Le falta **Bases 1**. {{/sin_bases1}}{{#sin_bases2}}Le falta **Bases 2**.{{/sin_bases2}}\n\n${FOOT}`,
-  },
-  bases_digest: {
-    group: 'bases', title: 'Lista semanal de posible seguimiento (Bases)', to: 'Cada voluntario de Bases',
-    when: 'Una vez por semana. Solo si hay personas que han solicitado servir y aún no han completado Bases.',
-    vars: ['personas', 'enlace_bases', 'url_panel'], flags: [], required: ['personas'],
-    subject: 'Posible seguimiento: personas que aún no han hecho Bases', heading: 'Posible seguimiento de Bases',
-    body: `Estas personas han solicitado servir y todavía no han completado Bases. Es tu lista de posible seguimiento:\n\n{{personas}}\n\nSi puedes, llámalas para invitarlas a apuntarse a Bases: {{enlace_bases}}\n\nCuéntales también cómo funciona (horarios, agenda…).\n\n${FOOT}`,
-  },
-  gc_assigned: {
-    group: 'gc', title: 'Posible seguimiento: persona sin Grupo de Conexión', to: 'El voluntario de GC de su ciudad (reparto entre los que haya)',
-    when: 'En cuanto alguien con Bases 1 solicita servir y no está en un Grupo de Conexión (o cuando acaba Bases 1). Es una persona de posible seguimiento.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'personas', 'enlace_gc', 'url_panel'], flags: [], required: ['personas'],
-    subject: 'Posible seguimiento para GC: {{nombre_completo}}', heading: 'Posible seguimiento de Grupos de Conexión',
-    body: `Esta persona ha solicitado servir en **{{equipo}}** y todavía no está en un Grupo de Conexión. Es una persona de posible seguimiento:\n\n{{personas}}\n\nSi puedes, llámala para invitarla a apuntarse a un GC: {{enlace_gc}}\n\nExplícale la importancia de los Grupos de Conexión, qué son y cómo funcionan.\n\n${FOOT}`,
-  },
-  gc_digest: {
-    group: 'gc', title: 'Lista semanal de posible seguimiento (GC)', to: 'Cada voluntario de GC',
-    when: 'Una vez por semana. Solo si hay personas con Bases 1 que aún no están en un Grupo de Conexión.',
-    vars: ['personas', 'enlace_gc', 'url_panel'], flags: [], required: ['personas'],
-    subject: 'Posible seguimiento: personas sin Grupo de Conexión', heading: 'Posible seguimiento de Grupos de Conexión',
-    body: `Estas personas han solicitado servir y todavía no están en un Grupo de Conexión. Es tu lista de posible seguimiento:\n\n{{personas}}\n\nSi puedes, llámalas para invitarlas a apuntarse a un GC: {{enlace_gc}}\n\nExplícales la importancia de los Grupos de Conexión, qué son y cómo funcionan.\n\n${FOOT}`,
+    group: 'lider', title: 'Tu lista', to: 'Cada líder, un email por equipo',
+    when: 'Los días y horas configurados (por defecto lunes y jueves a las 8:00). Toda tu lista abierta de ese equipo, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes alguna solicitud abierta.',
+    vars: ['equipo', 'seccion_nuevas', 'seccion_seguimiento', 'seccion_resto', 'url_panel'], flags: [], required: ['seccion_nuevas', 'seccion_seguimiento', 'seccion_resto'],
+    subject: 'Tu lista · {{equipo}}', heading: 'Tu equipo',
+    body: `Esta es tu lista de **{{equipo}}**.\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
   },
 };
-const GROUPS = { persona: 'A la persona que se apunta', lider: 'Al líder del equipo', bases: 'A los voluntarios de Bases', gc: 'A los voluntarios de GC' };
+const GROUPS = { persona: 'A la persona que se apunta', lider: 'Al líder del equipo' };
 
 // ---------- Lectura y validación ----------
 function getTemplate(key) {
@@ -168,7 +121,7 @@ function validate(key, { subject, heading, body }) {
   }
   for (const m of String(body || '').matchAll(/\[\[([^\]|]*)\|([^\]]*)\]\]/g)) {
     const raw = m[2].trim();
-    // Un botón puede apuntar a un enlace fijo o a un marcador de enlace ({{url_panel}}, {{enlace_bases1}}…)
+    // Un botón puede apuntar a un enlace fijo o a un marcador de enlace ({{url_panel}}, {{enlace_bases}}…)
     const ok = /^\{\{\s*(enlace_\w+|url_panel)\s*\}\}$/.test(raw) || /^(https?:\/\/|mailto:|tel:)\S+$/.test(raw.replace(TAG, 'x'));
     if (!ok) errors.push(`El botón «${m[1]}» tiene un enlace no válido (debe empezar por https://).`);
   }
@@ -224,30 +177,36 @@ function htmlToText(html) {
 /** Genera el email de una plantilla. `override` permite previsualizar un texto sin guardarlo. */
 function render(key, ctx, override) {
   const t = { ...getTemplate(key), ...(override || {}) };
-  const vars = { url_panel: `${config.appUrl}/panel`, enlace_bases: config.urls.bases, enlace_bases1: config.urls.bases1, enlace_bases2: config.urls.bases2, enlace_gc: config.urls.gc, ...(ctx.vars || {}) };
+  const vars = { url_panel: `${config.appUrl}/panel`, enlace_bases: config.urls.bases, enlace_gc: config.urls.gc, ...(ctx.vars || {}) };
   const html = layout(plain(t.heading, vars), bodyToHtml(t.body, { ...ctx, vars }));
   return { subject: plain(t.subject, vars), html, text: htmlToText(html), enabled: t.enabled !== false };
 }
 
 /** Datos de ejemplo para la vista previa y el email de prueba del panel. */
 function sampleContext(key) {
-  const person = { name: 'Ana Ruiz', email: 'ana@ejemplo.es', phone: '+34 600 111 222', city: 'Madrid', pco_url: 'https://people.planningcenteronline.com/people/1' };
-  const line = (a) => `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a> · ${esc(a.city)} · <a href="${esc(a.pco_url)}">Perfil</a>`;
-  const list = `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px"><li>${line(person)}</li><li>${line({ ...person, name: 'Luis Pérez', phone: '+34 611 222 333', email: 'luis@ejemplo.es' })}</li></ul>`;
+  const contrastadoOk = { ok: true, label: 'Sí' };
+  const contrastadoNo = { ok: false, label: 'No', guidance: 'Dice tener Bases 2, pero no consta en Planning Center. Contacta con el equipo de PCO de tu campus para corregirlo.' };
+  const person = { name: 'Ana Ruiz', email: 'ana@ejemplo.es', phone: '+34 600 111 222', city: 'Madrid', pco_url: 'https://people.planningcenteronline.com/people/1', cursos: 'Bases 1: Sí · Bases 2: No · GC: Sí', contrastado: contrastadoNo };
+  const persona2 = { ...person, name: 'Luis Pérez', phone: '+34 611 222 333', email: 'luis@ejemplo.es', cursos: 'Bases 1: Sí · Bases 2: Sí · GC: Sí', contrastado: contrastadoOk };
+  const line = (a) => {
+    let l = `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a> · ${esc(a.city)} · <a href="${esc(a.pco_url)}">Perfil</a>`;
+    if (a.cursos) l += `<br><span style="color:#71717a">${esc(a.cursos)} · Contrastado con PCO: ${esc(a.contrastado.label)}</span>`;
+    if (!a.contrastado.ok) l += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
+    return l;
+  };
+  const list = `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px"><li>${line(person)}</li><li>${line(persona2)}</li></ul>`;
   const h = (t) => `<h2 style="font-size:16px">${t}</h2>`;
   return {
-    vars: { nombre: 'Ana', nombre_completo: 'Ana Ruiz', equipo: 'Locales › Cafetería', ciudad: 'Madrid' },
-    flags: { bases: true, gc: true, sin_bases1: true, sin_bases2: true },
+    vars: { nombre: 'Ana', nombre_completo: 'Ana Ruiz', equipo: 'Locales › Cafetería', ciudad: 'Madrid', cursos: person.cursos },
+    flags: { encontrado: true, no_encontrado: false },
     blocks: {
-      faltan: `<ul style="line-height:1.7;margin:0 0 14px"><li><b>Bases 2</b> — <a href="${esc(config.urls.bases2)}">${esc(config.urls.bases2)}</a></li><li><b>un Grupo de Conexión (GC)</b> — <a href="${esc(config.urls.gc)}">${esc(config.urls.gc)}</a></li></ul>`,
+      faltan: `<ul style="line-height:1.7;margin:0 0 14px"><li><b>Bases 2</b> — <a href="${esc(config.urls.bases)}">${esc(config.urls.bases)}</a></li><li><b>un Grupo de Conexión (GC)</b> — <a href="${esc(config.urls.gc)}">${esc(config.urls.gc)}</a></li></ul>`,
       aviso_area: p('<i>El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos.</i>'),
       aviso_equipo: p('<i>Este equipo requiere una entrevista larga antes de empezar.</i>'),
       persona: `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px"><li>${line(person)}</li></ul>`,
-      personas: list,
-      sin_verificar: p('⚠ <b>Dato sin verificar:</b> dice haber hecho Bases 2, pero no consta en Planning Center. Confírmalo al llamarla.'),
-      seccion_llamar: h('📞 Llamar esta semana e invitar el domingo') + list,
-      seccion_seguimiento: h('🔁 Llamada de seguimiento (consolidar en el equipo)') + list,
-      seccion_pendientes: h('⏳ Interesados que aún no tienen Bases 1, Bases 2 o GC (seguimiento opcional)') + list.replace(/Perfil<\/a>/g, 'Perfil</a> · <i>Le falta: Bases 2 y GC</i> · <i>También le contactarán un voluntario de Bases y otro de GC</i>') + p('Es opcional: si quieres, puedes llamarles para darles la bienvenida y animarles a completar lo que les falta. Los voluntarios de Bases y de GC también contactarán con ellos para ayudarles con lo que les falta (lo indicamos en cada persona).'),
+      seccion_nuevas: h('🆕 Nuevas desde el último resumen') + list,
+      seccion_seguimiento: h('🔁 Toca hacer seguimiento') + `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px"><li>${line(persona2)}</li></ul>`,
+      seccion_resto: h('📋 Resto de tu lista') + list,
     },
   };
 }
