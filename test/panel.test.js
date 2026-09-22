@@ -77,6 +77,19 @@ test('el admin puede editar y borrar líderes; nadie puede borrar a un administr
   assert.equal((await req('leader', 'GET', '/api/panel/admin/users')).status, 403, 'un líder no accede a la gestión de usuarios');
 });
 
+test('el admin puede cambiar el email de un líder; se valida el formato y que no choque con otro', async () => {
+  const r = await req('admin', 'POST', '/api/panel/admin/users', { email: 'cambia-email@test.es', name: 'Cambia Email', phone: '', city_ids: [city] });
+  const id = (await r.json()).id;
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/users/${id}`, { name: 'Cambia Email', email: 'no-es-un-email', phone: '', active: true })).status, 400);
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/users/${id}`, { name: 'Cambia Email', email: 'lider@test.es', phone: '', active: true })).status, 400, 'ya lo usa otro usuario');
+  const ok = await req('admin', 'PUT', `/api/panel/admin/users/${id}`, { name: 'Cambia Email', email: 'email-nuevo@test.es', phone: '', active: true });
+  assert.equal(ok.status, 200);
+  assert.equal(db.prepare('SELECT email FROM users WHERE id = ?').get(id).email, 'email-nuevo@test.es');
+  // puede entrar con el email nuevo
+  const login = await fetch(base + '/api/login', { method: 'POST', headers: J, body: JSON.stringify({ email: 'email-nuevo@test.es', password: 'HillsongEspana' }) });
+  assert.equal(login.status, 200);
+});
+
 test('cada solicitud lleva «Contrastado con PCO»: sin ficha, con mezcla y todo bien', async () => {
   const sinFicha = apply('Sin Ficha', teamA, { pco: null, pcoBases1: null, pcoBases2: null, pcoGc: null });
   const mezcla = apply('Con Mezcla', teamA, { selfBases2: 1, pcoBases2: 0 });

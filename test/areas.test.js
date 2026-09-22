@@ -106,6 +106,29 @@ test('el admin crea subequipos, no puede anidar más de un nivel y los nombres s
   assert.equal((await post('/api/panel/admin/teams', { name: 'Kids', description: 'otra área con el mismo nombre en otro sitio', parent_id: db.prepare("SELECT id FROM teams WHERE name='IT' AND parent_id IS NULL").get().id })).status, 200);
 });
 
+test('el admin borra un equipo; al borrar un área se borran también sus subequipos; no deja borrar uno con solicitudes', async () => {
+  const areaId = Number((await (await post('/api/panel/admin/teams', { name: 'Área a Borrar' })).json()).id);
+  const subId = Number((await (await post('/api/panel/admin/teams', { name: 'Sub a Borrar', parent_id: areaId })).json()).id);
+  const otroSubId = Number((await (await post('/api/panel/admin/teams', { name: 'Otro Sub', parent_id: areaId })).json()).id);
+  // borrar un subequipo suelto: desaparece y su área se queda con el resto
+  assert.equal((await post(`/api/panel/admin/teams/${subId}`, {}, 'DELETE')).status, 200);
+  assert.equal(db.prepare('SELECT 1 FROM teams WHERE id = ?').get(subId), undefined);
+  assert.ok(db.prepare('SELECT 1 FROM teams WHERE id = ?').get(areaId));
+  // borrar el área se lleva también sus subequipos restantes
+  assert.equal((await post(`/api/panel/admin/teams/${areaId}`, {}, 'DELETE')).status, 200);
+  assert.equal(db.prepare('SELECT 1 FROM teams WHERE id = ?').get(areaId), undefined);
+  assert.equal(db.prepare('SELECT 1 FROM teams WHERE id = ?').get(otroSubId), undefined);
+  // un equipo con solicitudes no se puede borrar
+  const conSolicitud = Number((await (await post('/api/panel/admin/teams', { name: 'Con Solicitud' })).json()).id);
+  const city = db.prepare('SELECT id FROM cities LIMIT 1').get().id;
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana','ana-borrar@x.es','600111222',?,?,24)`).run(city, conSolicitud);
+  const r = await post(`/api/panel/admin/teams/${conSolicitud}`, {}, 'DELETE');
+  assert.equal(r.status, 400);
+  assert.match((await r.json()).error, /tiene solicitudes registradas/);
+  assert.ok(db.prepare('SELECT 1 FROM teams WHERE id = ?').get(conSolicitud), 'sigue existiendo');
+  assert.equal((await post('/api/panel/admin/teams/99999', {}, 'DELETE')).status, 404);
+});
+
 test('las imágenes de las áreas incluidas en el proyecto se aceptan al editar', async () => {
   const conex = db.prepare("SELECT * FROM teams WHERE name = 'Conexiones' AND parent_id IS NULL").get();
   assert.equal(conex.image_url, '/img/areas/conexiones.jpg');

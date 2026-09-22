@@ -35,11 +35,11 @@ Recibe: aviso inmediato por cada solicitud de su equipo y ciudad (con sus cursos
 1. **Esta semana:** llama e invita a visitar el equipo el **próximo domingo** → **Llamé**.
 2. **Domingo:** lo recibe y le enseña el equipo → **Visitó**.
 3. **La semana siguiente:** segunda llamada para consolidar.
-4. **Confirmar** (queda anotado en su perfil de Planning Center) o **No continúa**.
+4. **Resolver** (queda anotado en su perfil de Planning Center) o **No continúa**.
 5. Puede **borrar** solicitudes de su equipo y ciudad.
 
 ## 5. Administración
-Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos) y líderes (nombre, teléfono, ciudades y equipos a su cargo); puede **editar y borrar** líderes; pestaña **Emails** (editar textos, vista previa, prueba, días y horas de la lista completa); ve el líder asignado a cada persona; exporta CSV (con la columna «Contrastado con PCO» y el motivo si no).
+Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos) y líderes (nombre, email, teléfono, ciudades y equipos a su cargo); puede **editar y borrar** líderes (incluido su email) y **borrar equipos** (al borrar un área se borran también sus subequipos; no deja borrar uno con solicitudes registradas, para eso hay que ocultarlo o borrarlas antes); pestaña **Emails** (editar textos, vista previa, prueba, días y horas de la lista completa); ve el líder asignado a cada persona; exporta CSV (con la columna «Contrastado con PCO» y el motivo si no).
 
 ## 6. Hoja de ruta
 | Fase | Qué | Quién | Estado |

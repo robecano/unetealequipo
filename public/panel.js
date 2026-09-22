@@ -88,7 +88,7 @@ async function applicationsView(box) {
         h('td', {}, h('div', { class: 'acts' },
           ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Llamé') : null,
           ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
-          ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Confirmar') : null,
+          ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Resolver') : null,
           ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'no_continua' }, 'No continúa') : null,
           h('button', { class: 'danger', onclick: guard(async () => {
             if (!confirm(`¿Borrar la solicitud de ${a.name}?\n\nSe elimina también su historial en esta web. No se puede deshacer.\n(La nota en su perfil de Planning Center no se borra.)`)) return;
@@ -186,7 +186,17 @@ async function teamsView(box) {
   };
   const row = (t, sub) => h('div', { class: `li${sub ? ' li-sub' : ''}` },
     h('div', {}, t.image_url ? h('img', { class: 'thumb', src: t.image_url, alt: '' }) : (t.icon ? `${t.icon} ` : ''), h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null),
-    h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'));
+    h('div', { class: 'acts' },
+      h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'),
+      h('button', { class: 'mini danger', onclick: guard(async () => {
+        const subs = sub ? [] : subsOf(t.id);
+        const msg = subs.length
+          ? `¿Borrar «${t.name}» y sus ${subs.length} subequipo${subs.length > 1 ? 's' : ''}? No se puede deshacer.`
+          : `¿Borrar «${t.name}»? No se puede deshacer.`;
+        if (!confirm(msg)) return;
+        await api(`/panel/admin/teams/${t.id}`, { method: 'DELETE' });
+        teamsView(box);
+      }) }, 'Borrar')));
   box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Nuevo equipo o área'), h('span', { class: 'muted' }, `${areas.length} áreas · ${teams.length - areas.length} subequipos`)), editor,
     ...(areas.length ? areas.map((a) => h('div', { class: 'card group' }, row(a, false), subsOf(a.id).map((t) => row(t, true)),
       h('button', { class: 'mini add-sub', onclick: () => edit({ parent_id: a.id }) }, `+ Subequipo en ${a.name}`))) : [h('p', { class: 'muted' }, 'Aún no hay equipos.')]));
@@ -214,7 +224,7 @@ async function usersView(box) {
       usersView(box);
     }) },
       h('h3', {}, u.id ? `Editar a ${u.name || u.email}` : 'Nuevo líder de equipo'),
-      h('div', { class: 'row2' }, h('label', {}, 'Nombre', h('input', { name: 'name', value: u.name || '' })), h('label', {}, 'Email', h('input', { name: 'email', type: 'email', value: u.email || '', required: true, readonly: !!u.id }))),
+      h('div', { class: 'row2' }, h('label', {}, 'Nombre', h('input', { name: 'name', value: u.name || '' })), h('label', {}, 'Email', h('input', { name: 'email', type: 'email', value: u.email || '', required: true }))),
       h('label', {}, 'Teléfono (para que puedan contactarle)', h('input', { name: 'phone', type: 'tel', value: u.phone || '', placeholder: '+34 600 000 000', autocomplete: 'off' })),
       h('div', {}, h('p', { class: 'muted' }, 'Ciudades'), checks('city_ids', cities, u.city_ids)),
       h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', selectable, u.team_ids)),

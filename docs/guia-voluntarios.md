@@ -15,7 +15,7 @@ Un sistema que recoge a las personas que quieren **servir en un equipo** de la i
 1. **Esta semana:** llámala e invítala a visitar el equipo **el próximo domingo** → pulsa **Llamé**.
 2. **El domingo:** recíbela y enséñale el equipo → pulsa **Visitó**.
 3. **La semana siguiente:** vuelve a llamarla para saber cómo está y consolidarlo.
-4. Pulsa **Confirmar** (o **No continúa**) según corresponda.
+4. Pulsa **Resolver** (o **No continúa**) según corresponda.
 
 No hace falta que tenga Bases 1, Bases 2 o GC hechos para contactarla: llámala igual y, si le falta algo, coméntaselo tú mismo en la llamada (el email que recibió ya se lo explicó).
 

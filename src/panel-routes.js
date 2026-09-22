@@ -230,6 +230,14 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
     res.json({ ok: true });
   });
+  /** Borra un equipo (y, si es un área, sus subequipos en cascada). No deja borrar uno con solicitudes: hay que ocultarlo o borrarlas antes. */
+  admin.delete('/teams/:id', (req, res) => {
+    const id = Number(req.params.id);
+    if (!db.prepare('SELECT 1 FROM teams WHERE id = ?').get(id)) throw bad('No encontrado', 404);
+    try { db.prepare('DELETE FROM teams WHERE id = ?').run(id); }
+    catch { throw bad('No se puede borrar: tiene solicitudes registradas (o las tiene algún subequipo suyo). Oculta el equipo en vez de borrarlo, o borra antes esas solicitudes.'); }
+    res.json({ ok: true });
+  });
 
   // ---------- Emails: textos editables y horario del resumen ----------
   const tplView = (key) => {
@@ -336,7 +344,10 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!u) throw bad('No encontrado', 404);
     if (id === req.user.id && b.active === false) throw bad('No puedes desactivarte a ti mismo');
-    db.prepare('UPDATE users SET name=?, phone=?, active=? WHERE id=?').run(str(b.name, 100), phoneOf(b.phone), flag(b.active ?? 1), id);
+    const email = b.email === undefined ? u.email : str(b.email, 200).toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Email no válido');
+    try { db.prepare('UPDATE users SET email=?, name=?, phone=?, active=? WHERE id=?').run(email, str(b.name, 100), phoneOf(b.phone), flag(b.active ?? 1), id); }
+    catch { throw bad('Ese email ya existe'); }
     saveUser(id, b);
     res.json({ ok: true });
   });
