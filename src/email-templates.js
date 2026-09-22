@@ -185,13 +185,14 @@ function render(key, ctx, override) {
 /** Datos de ejemplo para la vista previa y el email de prueba del panel. */
 function sampleContext(key) {
   const contrastadoOk = { ok: true, label: 'Sí' };
-  const contrastadoNo = { ok: false, label: 'No', guidance: 'Dice tener Bases 2, pero no consta en Planning Center. Contacta con el equipo de PCO de tu campus para corregirlo.' };
+  const contrastadoNo = { ok: false, label: 'No', guidance: 'Dice tener Bases 2, pero no consta en Planning Center. Contacta con el equipo de PCO de tu campus para corregirlo.', reminder: 'Recuerda que es importante que haga el paso que le falta antes de empezar a servir.' };
   const person = { name: 'Ana Ruiz', email: 'ana@ejemplo.es', phone: '+34 600 111 222', city: 'Madrid', pco_url: 'https://people.planningcenteronline.com/people/1', cursos: 'Bases 1: Sí · Bases 2: No · GC: Sí', contrastado: contrastadoNo };
   const persona2 = { ...person, name: 'Luis Pérez', phone: '+34 611 222 333', email: 'luis@ejemplo.es', cursos: 'Bases 1: Sí · Bases 2: Sí · GC: Sí', contrastado: contrastadoOk };
   const line = (a) => {
     let l = `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a> · ${esc(a.city)} · <a href="${esc(a.pco_url)}">Perfil</a>`;
     if (a.cursos) l += `<br><span style="color:#71717a">${esc(a.cursos)} · Contrastado con PCO: ${esc(a.contrastado.label)}</span>`;
     if (!a.contrastado.ok) l += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
+    if (a.contrastado.reminder) l += `<br><span style="color:#b45309">${esc(a.contrastado.reminder)}</span>`;
     return l;
   };
   const list = `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px"><li>${line(person)}</li><li>${line(persona2)}</li></ul>`;

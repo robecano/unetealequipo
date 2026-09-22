@@ -28,6 +28,8 @@ Columna del panel y del email al líder que dice si lo que consta cuadra con Pla
 - **No, sin ficha:** no se ha encontrado a la persona en Planning Center. Se aconseja preguntarle si hay algún fallo (un email o teléfono distinto al que usó) o si aún no se ha registrado.
 - **No, con mezcla:** la persona dice tener algo (p. ej. Bases 2) que no consta en Planning Center. Se aconseja contactar con el equipo de PCO del campus para revisar si falta registrar algo.
 
+Además, si a la persona le falta de verdad algo (ni Planning Center ni ella misma lo dan por hecho), se añade un recordatorio junto a esa misma columna: *«Recuerda que es importante que haga el paso que le falta antes de empezar a servir»* (o «los pasos», si le falta más de uno). Aparece aunque esté contrastado con Planning Center («Sí»), porque contrastado y completo son cosas distintas.
+
 ## 4. Proceso del líder de equipo
 Recibe: aviso inmediato por cada solicitud de su equipo y ciudad (con sus cursos y si está contrastado) + lista completa dos veces por semana.
 1. **Esta semana:** llama e invita a visitar el equipo el **próximo domingo** → **Llamé**.

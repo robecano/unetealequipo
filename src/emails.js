@@ -16,6 +16,7 @@ const person = (a) => {
   let line = bits.join(' · ');
   if (a.cursos) line += `<br><span style="color:#71717a">${esc(a.cursos)} · Contrastado con PCO: ${esc(a.contrastado?.label ?? '')}</span>`;
   if (a.contrastado && !a.contrastado.ok) line += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
+  if (a.contrastado?.reminder) line += `<br><span style="color:#b45309">${esc(a.contrastado.reminder)}</span>`;
   return line;
 };
 const list = (items) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px">${items.map((a) => `<li>${person(a)}</li>`).join('')}</ul>`;

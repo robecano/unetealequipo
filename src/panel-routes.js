@@ -90,12 +90,12 @@ function csvCell(v) {
 function applicationsCsv(rows, { withLeaders = false } = {}) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
-    ...(withLeaders ? ['Líder de equipo'] : []), 'Contrastado con PCO', 'Motivo si no', 'Próximo seguimiento', 'Última actualización'];
+    ...(withLeaders ? ['Líder de equipo'] : []), 'Contrastado con PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
     ...(withLeaders ? [(a.leaders || []).map((l) => [l.name || l.email, l.phone].filter(Boolean).join(' · ')).join(' / ') || 'Sin líder asignado'] : []),
-    a.contrastado.label, a.contrastado.guidance || '', localDate(a.followup_at, false), localDate(a.updated_at)]);
+    a.contrastado.label, a.contrastado.guidance || '', a.contrastado.reminder || '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
   return '﻿' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
 }

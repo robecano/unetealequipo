@@ -19,7 +19,7 @@ const { digestSchedule } = require('../src/jobs');
 const { app } = require('../server');
 
 const contrastadoOk = { ok: true, label: 'Sí' };
-const contrastadoNo = { ok: false, label: 'No', guidance: 'Dice tener Bases 2, pero no consta en Planning Center. Contacta con el equipo de PCO de tu campus para corregirlo.' };
+const contrastadoNo = { ok: false, label: 'No', guidance: 'Dice tener Bases 2, pero no consta en Planning Center. Contacta con el equipo de PCO de tu campus para corregirlo.', reminder: 'Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir.' };
 const person = { name: 'Ana <b>Ruiz</b>', email: 'ana@x.es', phone: '+34 600 111 222', city: 'Madrid', team: 'Cafetería', cursos: 'Bases 1: Sí · Bases 2: No · GC: Sí', contrastado: contrastadoNo };
 
 test('email a la persona: recibida, con lo que consta o falta, y avisando de que el líder la contactará', () => {
@@ -50,11 +50,21 @@ test('aviso al líder: siempre lleva los datos, sus cursos y si está contrastad
   assert.match(m.html, /Bases 1: Sí · Bases 2: No · GC: Sí/);
   assert.match(m.html, /Contrastado con PCO: No/);
   assert.match(m.html, /Contacta con el equipo de PCO de tu campus/);
+  assert.match(m.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
   assert.match(m.text, /600 111 222/);
 
   const ok = emails.leaderNoticeEmail({ app: { ...person, contrastado: contrastadoOk } });
   assert.match(ok.html, /Contrastado con PCO: Sí/);
   assert.doesNotMatch(ok.html, /⚠/);
+  assert.doesNotMatch(ok.html, /Recuerda que es importante/, 'sin recordatorio si no le falta nada');
+});
+
+test('el recordatorio aparece aunque esté contrastado, si de verdad le falta algo', () => {
+  const contrastadoOkConFalta = { ok: true, label: 'Sí', reminder: 'Recuerda que es importante que haga el paso que le falta antes de empezar a servir.' };
+  const m = emails.leaderNoticeEmail({ app: { ...person, contrastado: contrastadoOkConFalta } });
+  assert.match(m.html, /Contrastado con PCO: Sí/);
+  assert.doesNotMatch(m.html, /⚠/, 'sin aviso de contraste: solo el recordatorio');
+  assert.match(m.html, /Recuerda que es importante que haga el paso que le falta antes de empezar a servir/);
 });
 
 test('resumen del líder: nuevas, seguimiento y resto solo aparecen si hay alguien', () => {

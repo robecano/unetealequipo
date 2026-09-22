@@ -54,6 +54,15 @@ test('courses.contrastadoInfo: sin ficha, con mezcla y todo bien', () => {
   const ok = courses.contrastadoInfo({ pco_person_id: '1', pco_bases1: 1, self_bases1: 1, pco_bases2: 1, self_bases2: 0, pco_gc: 1, self_gc: 1 });
   assert.equal(ok.ok, true);
   assert.equal(ok.label, 'Sí');
+  assert.equal(ok.reminder, null, 'lo tiene todo: sin recordatorio');
+});
+
+test('courses.contrastadoInfo: recordatorio si le falta algo de verdad, esté o no contrastado', () => {
+  const unoFalta = courses.contrastadoInfo({ pco_person_id: '1', pco_bases1: 1, self_bases1: 0, pco_bases2: 1, self_bases2: 0, pco_gc: 0, self_gc: 0 });
+  assert.equal(unoFalta.ok, true, 'contrastado bien, aunque le falte algo');
+  assert.match(unoFalta.reminder, /el paso que le falta/);
+  const variosFaltan = courses.contrastadoInfo({ pco_person_id: null });
+  assert.match(variosFaltan.reminder, /los pasos que le faltan/);
 });
 
 test('tiempo mínimo insuficiente: aviso a la persona, sin tocar Planning Center ni avisar al líder', async () => {
@@ -90,6 +99,7 @@ test('con ficha y todo completo: el líder ve «Contrastado con PCO: Sí» y sus
   assert.match(lider.html, /Bases 1: Sí · Bases 2: Sí · GC: Sí/);
   assert.match(lider.html, /Contrastado con PCO: Sí/);
   assert.doesNotMatch(lider.html, /⚠/);
+  assert.doesNotMatch(lider.html, /Recuerda que es importante/, 'lo tiene todo: sin recordatorio');
   const row = db.prepare('SELECT * FROM applications WHERE id=?').get(id);
   assert.ok(row.followup_at);
   assert.equal(row.pco_person_id, '55');
@@ -106,6 +116,7 @@ test('con ficha pero le falta algo: la persona ve lo que falta y el líder recib
   const lider = to('lider@test.es')[0];
   assert.ok(lider, 'ya no hay bloqueo: el líder siempre recibe el aviso');
   assert.match(lider.html, /Bases 1: Sí · Bases 2: No · GC: No/);
+  assert.match(lider.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
 });
 
 test('declara tener algo que Planning Center no confirma: se acepta el formulario, se anota aparte y el líder ve el aviso de contraste', async () => {

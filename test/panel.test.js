@@ -165,6 +165,9 @@ test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el pan
   const i = h.indexOf('Contrastado con PCO');
   assert.ok(i > 0);
   assert.equal(v[i], 'Sí');
+  const j = h.indexOf('Recordatorio');
+  assert.ok(j > i, 'va después de Contrastado con PCO y su motivo');
+  assert.match(v[j], /el paso que le falta/, 'le falta GC, aunque esté contrastado');
 });
 
 test('el administrador ve el líder de equipo asignado a cada persona (y si no hay, se le avisa); el líder no', async () => {

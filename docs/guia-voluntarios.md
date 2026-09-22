@@ -25,6 +25,8 @@ Junto a cada persona ves si lo que consta cuadra con Planning Center:
 - **No** (sin ficha): no la hemos encontrado en Planning Center. Pregúntale en la llamada si hay algún fallo (un email o teléfono distinto al que usó) o si aún no se ha registrado.
 - **No** (con mezcla): dice tener algo (p. ej. Bases 2) que no consta en Planning Center. Si confirmas que ya lo hizo, avisa al equipo de PCO de tu campus para que lo revisen y lo corrijan.
 
+Si le falta algo de verdad, verás también ahí un recordatorio para que lo complete antes de empezar a servir, aunque ponga «Sí» (contrastado y completo son cosas distintas).
+
 ## Botones útiles
 - **B1 / GC / B2:** ✓ si lo tiene (por Planning Center o porque lo declaró en el formulario), ✗ si no.
 - **Borrar:** elimina una solicitud de tu lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial).

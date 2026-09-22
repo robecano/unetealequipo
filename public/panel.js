@@ -53,10 +53,10 @@ const accepted = (pco, self) => !!pco || !!self;
 const mark = (ok) => h('span', { class: ok ? 'ok' : 'no' }, ok ? '✓' : '✗');
 const course = (label, pco, self) => h('td', {}, mark(accepted(pco, self)));
 
-/** «Contrastado con PCO»: si no cuadra, el motivo y el consejo (preguntar a la persona, o avisar al equipo de PCO del campus). */
+/** «Contrastado con PCO»: si no cuadra, el motivo y el consejo (preguntar a la persona, o avisar al equipo de PCO del campus); si le falta algo de verdad, el recordatorio, aunque esté contrastado. */
 function contrastado(c) {
   if (!c) return h('td', {}, '—');
-  return h('td', {}, h('span', { class: c.ok ? 'ok' : 'no' }, c.label), !c.ok ? h('div', { class: 'warn-mini' }, c.guidance) : null);
+  return h('td', {}, h('span', { class: c.ok ? 'ok' : 'no' }, c.label), !c.ok ? h('div', { class: 'warn-mini' }, c.guidance) : null, c.reminder ? h('div', { class: 'warn-mini' }, c.reminder) : null);
 }
 
 async function applicationsView(box) {
