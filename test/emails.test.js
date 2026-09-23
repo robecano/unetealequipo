@@ -37,6 +37,19 @@ test('email a la persona: recibida, con lo que consta o falta, y avisando de que
   assert.match(missing.html, /hillsong\.es\/gc/);
 });
 
+test('si dice tener algo que Planning Center no confirma, se le avisa que pase por el punto de información el domingo (salvo si no hay ficha)', () => {
+  const mism = emails.applicantEmail({ app: { name: 'Ana', city: 'Madrid' }, team: { name: 'X' }, missing: [], mismatched: ['bases1', 'gc'] });
+  assert.match(mism.html, /Contrastando con Planning Center, todavía no consta que hayas hecho Bases 1 y GC/);
+  assert.match(mism.html, /punto de información este domingo/);
+
+  const ok = emails.applicantEmail({ app: { name: 'Ana', city: 'Madrid' }, team: { name: 'X' }, missing: [], mismatched: [] });
+  assert.doesNotMatch(ok.html, /Contrastando con Planning Center/);
+
+  // sin ficha en Planning Center ya se le dice que no se pudo comprobar nada: no se añade este aviso aunque haya "mismatches" técnicos
+  const sinFicha = emails.applicantEmail({ app: { name: 'Ana', city: 'Madrid' }, team: { name: 'X' }, missing: [], mismatched: ['bases1'], notFoundInPco: true });
+  assert.doesNotMatch(sinFicha.html, /Contrastando con Planning Center/);
+});
+
 test('tiempo mínimo insuficiente: no se avisa al líder, y el asunto/tono es distinto', () => {
   const m = emails.applicantEmail({ app: { name: 'Ana', city: 'Madrid' }, team: { name: 'Kids', notice: 'Se pide entrevista previa.' }, tenureShort: true });
   assert.equal(m.subject, 'Tu solicitud para servir en Kids');

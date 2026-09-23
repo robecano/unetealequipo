@@ -35,14 +35,21 @@ function faltanHtml(missing) {
   }
   return `<ul style="line-height:1.7;margin:0 0 14px">${items.join('')}</ul>`;
 }
+
+/** Aviso si dice tener algo que Planning Center no confirma: que se pase por el punto de información el domingo. */
+function contrasteHtml(mismatched) {
+  if (!mismatched.length) return '';
+  return p(esc(`Contrastando con Planning Center, todavía no consta que hayas hecho ${courses.joinEs(mismatched.map((k) => courses.LABEL[k]))}. Si ya lo hiciste, pásate por el punto de información este domingo para que actualicemos tus datos.`));
+}
 const first = (name) => String(name || '').split(' ')[0];
 
 /**
  * Email a la persona que se apunta. Si aún no cumple el tiempo mínimo, aviso aparte (no se avisa al líder).
  * En cualquier otro caso recibe un único email: lo que consta (o que no se encontró su ficha), lo que le falta
- * si acaso, y que el líder del equipo la contactará esta semana.
+ * de verdad si acaso, el aviso de contraste si dijo tener algo que Planning Center no confirma (solo si tiene
+ * ficha: sin ficha ya se le dice que no se pudo comprobar nada), y que el líder del equipo la contactará esta semana.
  */
-function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort }) {
+function applicantEmail({ app, team, missing = [], mismatched = [], notFoundInPco, tenureShort }) {
   if (tenureShort) {
     return render('applicant_tenure', {
       vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '' },
@@ -52,7 +59,7 @@ function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort })
   return render('applicant_received', {
     vars: { nombre: first(app.name), nombre_completo: app.name, equipo: team.name, ciudad: app.city || '', cursos: courses.courseLine(app) },
     flags: { encontrado: !notFoundInPco, no_encontrado: !!notFoundInPco },
-    blocks: { faltan: faltanHtml(missing), aviso_area: italic(app.area_notice), aviso_equipo: italic(team.notice) },
+    blocks: { faltan: faltanHtml(missing), contraste: notFoundInPco ? '' : contrasteHtml(mismatched), aviso_area: italic(app.area_notice), aviso_equipo: italic(team.notice) },
   });
 }
 

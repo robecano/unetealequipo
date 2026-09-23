@@ -124,7 +124,7 @@ function createFlow({ pco, mail }) {
     logEvent(id, null, 'pco_match', `${person ? `Persona ${person.id}` : 'Sin ficha en Planning Center: se trata como si no tuviera nada'} · faltan: ${missing.map((k) => courses.LABEL[k]).join(', ') || 'nada'}${mismatched.length ? ` · declarado sin constar en PCO: ${mismatched.map((k) => courses.LABEL[k]).join(', ')}` : ''}`);
 
     await writeNotes(id);
-    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, notFoundInPco: !person }), a.email);
+    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, mismatched, notFoundInPco: !person }), a.email);
     await alertIfNoLeader(id);
     return 'listo';
   }

@@ -110,14 +110,26 @@ test('con ficha pero le falta algo: la persona ve lo que falta; sin bloqueo y si
   assert.equal(to('lider@test.es').length, 0, 'ya no hay bloqueo, pero tampoco aviso inmediato: se ve en su lista');
 });
 
-test('declara tener algo que Planning Center no confirma: se acepta el formulario y se anota aparte', async () => {
+test('declara tener algo que Planning Center no confirma: se acepta el formulario, se anota aparte y se avisa a la persona que pase por el punto de información', async () => {
   reset(); person = { id: '57', url: 'https://pco/57' }; course = { bases1: true, bases2: false, gc: true };
   const id = apply(av, 24, { b2: true });
   await flow.process(id);
   assert.equal(notes.length, 2);
   assert.match(notes[0][1], /^Interesado en servir en AV/);
   assert.match(notes[1][1], /^La persona dice haber hecho Bases 2, pero no consta en Planning Center/);
+  const persona = to('ana@x.es')[0];
+  assert.match(persona.html, /Contrastando con Planning Center, todavía no consta que hayas hecho Bases 2/);
+  assert.match(persona.html, /punto de información este domingo/);
   assert.equal(to('lider@test.es').length, 0);
+});
+
+test('sin ficha en Planning Center: aunque declare algo, no se le pide pasar por el punto de información (ya se le dice que no se pudo comprobar nada)', async () => {
+  reset(); person = null;
+  const id = apply(av, 24, { b1: true });
+  await flow.process(id);
+  const persona = to('ana@x.es')[0];
+  assert.match(persona.html, /No hemos encontrado tu ficha/);
+  assert.doesNotMatch(persona.html, /Contrastando con Planning Center/);
 });
 
 test('sin líder asignado: se avisa a la administración (con la plantilla editable) y no a nadie más', async () => {

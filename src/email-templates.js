@@ -28,6 +28,7 @@ const VARS = {
   enlace_bases: { desc: 'Enlace de Bases (hillsong.es/bases)' },
   enlace_gc: { desc: 'Enlace de Grupos de Conexión (hillsong.es/gc)' },
   faltan: { desc: 'Lista de lo que le falta (Bases 1, Bases 2, GC) con sus enlaces (vacío si no le falta nada)', block: true },
+  contraste: { desc: 'Aviso si dice tener algo que Planning Center no confirma: que se pase por el punto de información el domingo (vacío si no hay diferencias)', block: true },
   aviso_area: { desc: 'Aviso del área (p. ej. organización y gestión)', block: true },
   aviso_equipo: { desc: 'Aviso del subequipo (p. ej. entrevista previa)', block: true },
   seccion_nuevas: { desc: 'Personas nuevas desde el último envío (solo si hay alguna)', block: true },
@@ -56,9 +57,9 @@ const TEMPLATES = {
   applicant_received: {
     group: 'persona', title: 'Solicitud recibida', to: 'La persona que se apunta',
     when: 'En cuanto se apunta y llega al tiempo mínimo del equipo. Le dice lo que consta (o que no se encontró su ficha), lo que le falta si acaso, y que el líder la contactará esta semana.',
-    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'cursos', 'faltan', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['encontrado', 'no_encontrado'], required: [],
+    vars: ['nombre', 'nombre_completo', 'equipo', 'ciudad', 'cursos', 'faltan', 'contraste', 'enlace_bases', 'enlace_gc', 'aviso_area', 'aviso_equipo'], flags: ['encontrado', 'no_encontrado'], required: [],
     subject: 'Tu solicitud para servir en {{equipo}}', heading: '¡Gracias por apuntarte!',
-    body: `${HELLO}\n\n{{#no_encontrado}}No hemos encontrado tu ficha en nuestro sistema, así que no hemos podido comprobar tus pasos (Bases 1, Bases 2 y GC).{{/no_encontrado}}\n\n{{#encontrado}}Esto es lo que tenemos registrado: {{cursos}}.{{/encontrado}}\n\n{{faltan}}\n\nEl líder de tu equipo revisará tu solicitud y te contactará esta semana.\n\n${NOTICES}`,
+    body: `${HELLO}\n\n{{#no_encontrado}}No hemos encontrado tu ficha en nuestro sistema, así que no hemos podido comprobar tus pasos (Bases 1, Bases 2 y GC).{{/no_encontrado}}\n\n{{#encontrado}}Esto es lo que tenemos registrado: {{cursos}}.{{/encontrado}}\n\n{{faltan}}\n\n{{contraste}}\n\nEl líder de tu equipo revisará tu solicitud y te contactará esta semana.\n\n${NOTICES}`,
   },
   leader_digest: {
     group: 'lider', title: 'Tu lista', to: 'Cada líder, un email por equipo',
@@ -202,6 +203,7 @@ function sampleContext(key) {
     flags: { encontrado: true, no_encontrado: false },
     blocks: {
       faltan: `<ul style="line-height:1.7;margin:0 0 14px"><li><b>Bases 2</b> — <a href="${esc(config.urls.bases)}">${esc(config.urls.bases)}</a></li><li><b>un Grupo de Conexión (GC)</b> — <a href="${esc(config.urls.gc)}">${esc(config.urls.gc)}</a></li></ul>`,
+      contraste: p(esc('Contrastando con Planning Center, todavía no consta que hayas hecho Bases 1. Si ya lo hiciste, pásate por el punto de información este domingo para que actualicemos tus datos.')),
       aviso_area: p('<i>El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos.</i>'),
       aviso_equipo: p('<i>Este equipo requiere una entrevista larga antes de empezar.</i>'),
       seccion_nuevas: h('🆕 Nuevas desde el último resumen') + list,
