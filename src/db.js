@@ -195,8 +195,8 @@ if (appCols.includes('bases_user_id')) {
 try { db.exec('ALTER TABLE applications ADD COLUMN bases_contacted_at TEXT'); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN gc_contacted_at TEXT'); } catch { /* ya existe */ }
 
-// El área «Domingo» pasa a llamarse «Operativos». Solo afecta a quien todavía la tuviera con el nombre antiguo.
-db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name = 'Domingo'");
+// El área «Domingo» (o «Operativo», si ya se había renombrado a mano en el panel) pasa a llamarse «Operativos».
+db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name IN ('Domingo', 'Operativo')");
 
 // Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
