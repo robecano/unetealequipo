@@ -204,7 +204,7 @@ function media(t) {
 }
 
 async function teamsView(box) {
-  const teams = await api('/panel/admin/teams');
+  const [teams, cities] = await Promise.all([api('/panel/admin/teams'), api('/panel/admin/cities')]);
   const areas = teams.filter((t) => !t.parent_id);
   const subsOf = (id) => teams.filter((t) => t.parent_id === id);
   const editor = h('div');
@@ -215,10 +215,16 @@ async function teamsView(box) {
     const mediaBox = h('div', {}, media(t));
     const sync = () => { mediaBox.hidden = !!parent.value; };
     parent.addEventListener('change', sync);
+    // Solo tiene sentido restringir por ciudad lo que de verdad se elige: un subequipo, o un área sin subequipos (que se comporta como equipo)
+    const citiesBox = t.id && !t.parent_id && subsOf(t.id).length
+      ? h('p', { class: 'muted' }, 'Esta área tiene subequipos: la disponibilidad por ciudad se marca en cada uno de ellos, no aquí.')
+      : h('div', {}, h('p', { class: 'muted' }, 'Ciudades donde se puede elegir (vacío = disponible en todas)'), checks('city_ids', cities, t.city_ids || []));
     editor.replaceChildren(h('form', { class: 'card form', onsubmit: guard(async (e) => {
       e.preventDefault();
-      const d = Object.fromEntries(new FormData(e.target).entries());
+      const fd = new FormData(e.target);
+      const d = Object.fromEntries(fd.entries());
       d.active = e.target.active.checked;
+      d.city_ids = fd.getAll('city_ids');
       await api(t.id ? `/panel/admin/teams/${t.id}` : '/panel/admin/teams', { method: t.id ? 'PUT' : 'POST', body: d });
       teamsView(box);
     }) },
@@ -230,13 +236,16 @@ async function teamsView(box) {
       f('sort', 'Orden', 'number'),
       f('min_months', 'Meses mínimos en la iglesia (0 = sin mínimo)', 'number'),
       h('label', {}, 'Aviso para quien se apunta (p. ej. entrevista previa). En un área se muestra al abrirla', h('textarea', { name: 'notice', rows: 2 }, t.notice || '')),
+      citiesBox,
       h('label', { class: 'checks' }, h('input', { type: 'checkbox', name: 'active', checked: t.active !== 0 }), 'Visible en la web'),
       h('div', { class: 'acts' }, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Guardar'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editor.replaceChildren() }, 'Cancelar'))));
     sync();
     editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const cityName = (id) => cities.find((c) => c.id === id)?.name;
   const row = (t, sub) => h('div', { class: `li${sub ? ' li-sub' : ''}` },
-    h('div', {}, t.image_url ? h('img', { class: 'thumb', src: t.image_url, alt: '' }) : (t.icon ? `${t.icon} ` : ''), h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null),
+    h('div', {}, t.image_url ? h('img', { class: 'thumb', src: t.image_url, alt: '' }) : (t.icon ? `${t.icon} ` : ''), h('b', {}, t.name), t.active ? '' : ' (oculto)', t.min_months ? h('span', { class: 'muted' }, ` · mín. ${t.min_months} meses`) : null,
+      t.city_ids.length ? h('span', { class: 'muted' }, ` · solo en ${t.city_ids.map(cityName).join(', ')}`) : null),
     h('div', { class: 'acts' },
       h('button', { class: 'mini', onclick: () => edit(t) }, 'Editar'),
       h('button', { class: 'mini danger', onclick: guard(async () => {
@@ -253,6 +262,8 @@ async function teamsView(box) {
       h('button', { class: 'mini add-sub', onclick: () => edit({ parent_id: a.id }) }, `+ Subequipo en ${a.name}`))) : [h('p', { class: 'muted' }, 'Aún no hay equipos.')]));
 }
 
+const checks = (name, items, selected) => h('div', { class: 'checks' }, items.map((i) => h('label', {}, h('input', { type: 'checkbox', name, value: i.id, checked: selected.includes(i.id) }), i.name)));
+
 async function citiesView(box) {
   const cities = await api('/panel/admin/cities');
   const input = h('input', { placeholder: 'Nueva ciudad' });
@@ -265,7 +276,6 @@ async function usersView(box) {
   const editor = h('div');
   // Un líder se asigna a subequipos (o a un área sin subequipos), no a las áreas que los agrupan
   const selectable = teams.filter((t) => t.parent_id || !teams.some((c) => c.parent_id === t.id)).map((t) => ({ id: t.id, name: t.parent_name && t.parent_name !== t.name ? `${t.parent_name} › ${t.name}` : t.name }));
-  const checks = (name, items, selected) => h('div', { class: 'checks' }, items.map((i) => h('label', {}, h('input', { type: 'checkbox', name, value: i.id, checked: selected.includes(i.id) }), i.name)));
   const edit = (u = { role: 'leader', city_ids: [], team_ids: [], active: 1 }) => {
     const role = h('select', { name: 'role' }, ['leader', 'bases', 'gc'].map((k) => h('option', { value: k, selected: k === u.role }, ROLE[k])));
     const teamsBox = h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', selectable, u.team_ids));

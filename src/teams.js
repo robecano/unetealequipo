@@ -12,7 +12,14 @@ const SELECTABLE = `(t.active = 1 AND (
 /** «Área › Subequipo», o solo el nombre si coinciden (Kids › Kids) o no hay área. */
 const TEAM_LABEL = `(CASE WHEN p.id IS NULL OR p.name = t.name THEN t.name ELSE p.name || ' › ' || t.name END)`;
 
-const pick = (t, area) => ({ id: t.id, name: t.name, description: t.description, min_months: t.min_months, notice: t.notice, area_notice: area && area.id !== t.id ? area.notice : '' });
+let cityIdsStmt;
+/** Ciudades donde se puede elegir este equipo. Vacío = disponible en todas. */
+const cityIdsOf = (teamId) => {
+  cityIdsStmt ||= db.prepare('SELECT city_id FROM team_cities WHERE team_id = ?');
+  return cityIdsStmt.all(teamId).map((r) => r.city_id);
+};
+
+const pick = (t, area) => ({ id: t.id, name: t.name, description: t.description, min_months: t.min_months, notice: t.notice, area_notice: area && area.id !== t.id ? area.notice : '', city_ids: cityIdsOf(t.id) });
 
 /** Árbol para la web pública: áreas activas con sus subequipos activos. */
 function publicTree() {
@@ -27,8 +34,13 @@ function publicTree() {
   });
 }
 
-/** ¿Se puede elegir este equipo en el formulario? */
-const findSelectable = (id) =>
-  db.prepare(`SELECT t.* FROM teams t LEFT JOIN teams p ON p.id = t.parent_id WHERE t.id = ? AND ${SELECTABLE}`).get(id);
+/** ¿Se puede elegir este equipo en el formulario? Si tiene ciudades restringidas, además debe incluir cityId. */
+function findSelectable(id, cityId) {
+  const t = db.prepare(`SELECT t.* FROM teams t LEFT JOIN teams p ON p.id = t.parent_id WHERE t.id = ? AND ${SELECTABLE}`).get(id);
+  if (!t) return t; // undefined: no encontrado (igual que antes)
+  const cities = cityIdsOf(id);
+  if (cities.length && !cities.includes(cityId)) return undefined; // no disponible en esa ciudad
+  return t;
+}
 
 module.exports = { SELECTABLE, TEAM_LABEL, publicTree, findSelectable };

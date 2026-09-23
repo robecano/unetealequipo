@@ -249,8 +249,9 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ url: `/uploads/${name}` });
   });
 
+  const teamRow = (t) => ({ ...t, city_ids: db.prepare('SELECT city_id FROM team_cities WHERE team_id = ?').all(t.id).map((x) => x.city_id) });
   admin.get('/teams', (_req, res) =>
-    res.json(db.prepare('SELECT t.*, p.name AS parent_name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id ORDER BY COALESCE(p.sort, t.sort), COALESCE(p.name, t.name), t.parent_id IS NOT NULL, t.sort, t.name').all()));
+    res.json(db.prepare('SELECT t.*, p.name AS parent_name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id ORDER BY COALESCE(p.sort, t.sort), COALESCE(p.name, t.name), t.parent_id IS NOT NULL, t.sort, t.name').all().map(teamRow)));
 
   const clamp100 = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 30; };
   const teamFields = (b) => [str(b.name, 80), str(b.description, 1200), firstChars(b.icon, 6), str(b.image_url, 500), Math.max(0, parseInt(b.min_months, 10) || 0), str(b.notice, 600), flag(b.active ?? 1), parseInt(b.sort, 10) || 0, clamp100(b.image_pos)];
@@ -263,14 +264,24 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     if (selfId && db.prepare('SELECT 1 FROM teams WHERE parent_id = ?').get(selfId)) throw bad('Un área con subequipos no puede colgar de otra');
     return pid;
   }
+  /** Ciudades donde se puede elegir este equipo. Vacío (sin marcar ninguna) = disponible en todas. */
+  function saveTeamCities(id, b) {
+    tx(() => {
+      db.exec(`DELETE FROM team_cities WHERE team_id = ${id}`);
+      for (const c of ids(b.city_ids)) db.prepare('INSERT OR IGNORE INTO team_cities VALUES (?,?)').run(id, c);
+    });
+  }
   admin.post('/teams', (req, res) => {
     const b = req.body || {};
     const f = teamFields(b);
     if (!f[0]) throw bad('Falta el nombre');
     if (!validImageUrl(f[3])) throw bad('La imagen debe ser una URL https o una imagen subida');
     const parent = parentOf(b, null);
-    try { res.json({ id: Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort,image_pos,parent_id) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...f, parent).lastInsertRowid) }); }
+    let id;
+    try { id = Number(db.prepare('INSERT INTO teams (name,description,icon,image_url,min_months,notice,active,sort,image_pos,parent_id) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...f, parent).lastInsertRowid); }
     catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
+    saveTeamCities(id, b);
+    res.json({ id });
   });
   admin.put('/teams/:id', (req, res) => {
     const b = req.body || {};
@@ -281,6 +292,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const parent = parentOf(b, id);
     try { db.prepare('UPDATE teams SET name=?,description=?,icon=?,image_url=?,min_months=?,notice=?,active=?,sort=?,image_pos=?,parent_id=? WHERE id=?').run(...f, parent, id); }
     catch { throw bad('Ya existe un equipo con ese nombre en esa área'); }
+    saveTeamCities(id, b);
     res.json({ ok: true });
   });
   /** Borra un equipo (y, si es un área, sus subequipos en cascada). No deja borrar uno con solicitudes: hay que ocultarlo o borrarlas antes. */

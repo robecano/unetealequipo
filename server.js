@@ -69,13 +69,13 @@ app.post('/api/apply', (req, res) => {
   const email = String(b.email || '').trim().toLowerCase().slice(0, 200);
   const phone = String(b.phone || '').trim().slice(0, 30);
   const city = db.prepare('SELECT id FROM cities WHERE id = ? AND active = 1').get(Number(b.city_id));
-  const team = findSelectable(Number(b.team_id));
+  const team = findSelectable(Number(b.team_id), city?.id);
   const tenure = Number(b.tenure);
   if (name.length < 2) throw bad('Escribe tu nombre');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('El email no es válido');
   if (phone.replace(/\D/g, '').length < 8) throw bad('El teléfono no es válido');
   if (!city) throw bad('Elige tu ciudad');
-  if (!team) throw bad('Elige un equipo');
+  if (!team) throw bad('Ese equipo no está disponible en tu ciudad');
   if (!TENURES.includes(tenure)) throw bad('Indica cuánto tiempo llevas en la iglesia');
   applyLimit.hit(req.ip);
 

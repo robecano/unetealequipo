@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS leader_teams (
   team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, team_id)
 );
+-- Ciudades donde se puede elegir un equipo. Sin filas = disponible en todas (para no tener que marcar los que ya existían).
+CREATE TABLE IF NOT EXISTS team_cities (
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  city_id INTEGER NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
+  PRIMARY KEY (team_id, city_id)
+);
 CREATE TABLE IF NOT EXISTS applications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -188,6 +194,9 @@ if (appCols.includes('bases_user_id')) {
 // Cuándo llamó el líder de Bases o el de GC (null = aún no): así el líder de equipo ve si ya le han contactado.
 try { db.exec('ALTER TABLE applications ADD COLUMN bases_contacted_at TEXT'); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN gc_contacted_at TEXT'); } catch { /* ya existe */ }
+
+// El área «Domingo» pasa a llamarse «Operativos». Solo afecta a quien todavía la tuviera con el nombre antiguo.
+db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name = 'Domingo'");
 
 // Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (

@@ -21,6 +21,8 @@ Columna del panel y del email al líder:
 ## Equipos: áreas y subequipos
 La web muestra **12 áreas** (tarjetas cuadradas con foto o emoji); al pulsar una se abre un desplegable con sus **subequipos**, cada uno con su descripción y su botón «Quiero unirme». En el formulario se elige un subequipo. Los líderes se asignan a subequipos. Un área sin subequipos se comporta como un equipo. `node scripts/seed-equipos.js [--ciudades]` carga el listado completo (idempotente, no pisa lo editado).
 
+Cada subequipo (o área sin subequipos) puede **restringirse a una o varias ciudades** desde su editor en el panel; sin ninguna marcada, está disponible en todas (así no hace falta tocar los que ya existían). Tanto el escaparate de la web (con su propio selector de ciudad) como el desplegable «Equipo» del formulario solo muestran lo disponible en la ciudad elegida; el servidor también lo comprueba al recibir el formulario.
+
 ## Emails
 Todos los textos se editan en **Panel → Emails** (solo admin): asunto, título y cuerpo con marcadores (`{{nombre}}`, `{{equipo}}`, `{{seccion_nuevas}}`…), condicionales (`{{#encontrado}}…{{/encontrado}}`), vista previa, email de prueba a tu correo y «Restaurar el original». No deja guardar un email al que le falte información imprescindible o con marcadores inexistentes. Los originales están en `src/email-templates.js`. Los días y horas de la lista completa también se cambian ahí (varias franjas, p. ej. lunes y jueves).
 

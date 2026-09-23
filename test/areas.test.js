@@ -77,6 +77,20 @@ test('solo se pueden elegir subequipos (o áreas sin subequipos), no las áreas 
   db.prepare('UPDATE teams SET active = 1 WHERE id = ?').run(area);
 });
 
+test('equipos con ciudades restringidas: sin ninguna marcada se elige en cualquier ciudad; con alguna, solo en esas', () => {
+  const c1 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Ciudad Restringida 1')").run().lastInsertRowid);
+  const c2 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Ciudad Restringida 2')").run().lastInsertRowid);
+  const sub = db.prepare("SELECT id FROM teams WHERE parent_id IS NOT NULL AND name = 'Baile'").get().id;
+  assert.ok(findSelectable(sub, c1));
+  assert.ok(findSelectable(sub, c2));
+  assert.deepEqual(publicTree().flatMap((a) => a.teams).find((t) => t.id === sub).city_ids, []);
+  db.prepare('INSERT INTO team_cities (team_id, city_id) VALUES (?,?)').run(sub, c1);
+  assert.ok(findSelectable(sub, c1));
+  assert.equal(findSelectable(sub, c2), undefined);
+  assert.deepEqual(publicTree().flatMap((a) => a.teams).find((t) => t.id === sub).city_ids, [c1]);
+  db.prepare('DELETE FROM team_cities WHERE team_id = ?').run(sub); // no afecta a otros tests
+});
+
 let server, base, cookie;
 test.before(async () => {
   server = app.listen(0);
@@ -94,6 +108,33 @@ test('el formulario rechaza un área con subequipos y acepta un subequipo', asyn
   const form = (team_id) => post('/api/apply', { name: 'Ana Ruiz', email: `a${team_id}@x.es`, phone: '600111222', city_id: city, team_id, tenure: '24' });
   assert.equal((await form(creativos.id)).status, 400);
   assert.equal((await form(creativos.teams[0].id)).status, 200);
+});
+
+test('el admin restringe un equipo a una ciudad: se guarda, sale en /api/public y el formulario lo rechaza en otra ciudad', async () => {
+  const pub = await (await fetch(base + '/api/public')).json();
+  const cityA = pub.cities[0].id;
+  const cityB = pub.cities[1]?.id ?? Number(db.prepare("INSERT INTO cities (name) VALUES ('Otra Ciudad Form')").run().lastInsertRowid);
+  const area = pub.areas.find((a) => a.name === 'IT').id;
+  const created = await post('/api/panel/admin/teams', { name: 'Solo Ciudad A', parent_id: area, city_ids: [cityA] });
+  assert.equal(created.status, 200);
+  const teamId = (await created.json()).id;
+
+  const list = await (await fetch(base + '/api/panel/admin/teams', { headers: { Cookie: cookie } })).json();
+  assert.deepEqual(list.find((t) => t.id === teamId).city_ids, [cityA]);
+
+  const pubAfter = await (await fetch(base + '/api/public')).json();
+  const found = pubAfter.areas.find((a) => a.name === 'IT').teams.find((t) => t.name === 'Solo Ciudad A');
+  assert.deepEqual(found.city_ids, [cityA]);
+
+  const form = (city_id) => post('/api/apply', { name: 'Resti Ngida', email: `resti${city_id}@x.es`, phone: '600222333', city_id, team_id: teamId, tenure: '24' });
+  const rejected = await form(cityB);
+  assert.equal(rejected.status, 400);
+  assert.match((await rejected.json()).error, /no está disponible en tu ciudad/);
+  assert.equal((await form(cityA)).status, 200);
+
+  // Quitar la restricción (dejar city_ids vacío) lo vuelve a hacer disponible en cualquier ciudad
+  assert.equal((await post(`/api/panel/admin/teams/${teamId}`, { name: 'Solo Ciudad A', parent_id: area, city_ids: [] }, 'PUT')).status, 200);
+  assert.equal((await form(cityB)).status, 200);
 });
 
 test('el admin crea subequipos, no puede anidar más de un nivel y los nombres se repiten solo entre áreas distintas', async () => {
@@ -161,7 +202,7 @@ test('el aviso de organización aparece en Comunidades, Sisterhood, Jóvenes, Ci
     assert.match(a.notice, /^El servicio en esta área sería ayudando en el equipo de organización y gestión de las actividades y eventos\.$/, n);
     assert.equal(a.teams[0].area_notice, a.notice);
   }
-  for (const n of ['Kids', 'Domingo', 'IT']) assert.equal(tree.find((x) => x.name === n).notice, '');
+  for (const n of ['Kids', 'Operativos', 'IT']) assert.equal(tree.find((x) => x.name === n).notice, '');
   const { fullApp } = require('../src/flow');
   const emails = require('../src/emails');
   const men = db.prepare("SELECT id FROM teams WHERE name = 'Men'").get().id;

@@ -9,7 +9,7 @@ const PASTORAL_NOTE = 'Requiere una entrevista y acompañamiento previo del equi
 
 // [nombre, descripción, [subequipos: nombre, descripción, meses mínimos, aviso]]
 const AREAS = [
-  { name: 'Domingo', pos: 25, image: '/img/areas/domingo.jpg', icon: '⛪', desc: 'Equipos que hacen posible cada reunión de domingo.', teams: [
+  { name: 'Operativos', pos: 25, image: '/img/areas/domingo.jpg', icon: '⛪', desc: 'Equipos que hacen posible cada reunión de domingo.', teams: [
     ['Eventos', 'Organización y coordinación de los domingos y eventos especiales.'],
     ['Mantenimiento', 'Cuidado y mantenimiento de instalaciones y espacios.'],
     ['Recursos', 'Venta de merchandising, libros y recursos de la iglesia.'] ] },

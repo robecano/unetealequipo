@@ -12,8 +12,13 @@ function h(tag, props = {}, ...kids) {
 }
 
 let data = { areas: [], cities: [] };
+let galleryCity = ''; // ciudad elegida para explorar el escaparate (independiente de la del formulario)
 const allTeams = () => data.areas.flatMap((a) => a.teams);
 const plural = (n) => `${n} equipo${n === 1 ? '' : 's'}`;
+// Un equipo sin ciudades marcadas está disponible en todas; si tiene alguna, solo en esas.
+const availableIn = (team, cityId) => !cityId || !team.city_ids.length || team.city_ids.includes(cityId);
+/** Áreas con solo los equipos disponibles en cityId (o todos, si no se ha elegido ciudad); sin áreas vacías. */
+const areasFor = (cityId) => data.areas.map((a) => ({ ...a, teams: a.teams.filter((t) => availableIn(t, cityId)) })).filter((a) => a.teams.length);
 
 /** Tarjeta cuadrada de un área: foto (o degradado con emoji), nombre, descripción y nº de equipos. */
 function areaCard(area, i) {
@@ -30,8 +35,11 @@ function areaCard(area, i) {
 
 function renderAreas() {
   const q = $('#search').value.trim().toLowerCase();
-  const list = data.areas.filter((a) => !q || `${a.name} ${a.description} ${a.teams.map((t) => t.name).join(' ')}`.toLowerCase().includes(q));
-  $('#areas').replaceChildren(...(list.length ? list.map(areaCard) : [h('p', { class: 'muted' }, data.areas.length ? 'Ningún equipo coincide con tu búsqueda.' : 'Pronto verás aquí los equipos.')]));
+  const cityId = galleryCity ? Number(galleryCity) : null;
+  const available = areasFor(cityId);
+  const list = available.filter((a) => !q || `${a.name} ${a.description} ${a.teams.map((t) => t.name).join(' ')}`.toLowerCase().includes(q));
+  const empty = q ? 'Ningún equipo coincide con tu búsqueda.' : cityId ? 'Todavía no hay equipos disponibles en esa ciudad.' : 'Pronto verás aquí los equipos.';
+  $('#areas').replaceChildren(...(list.length ? list.map(areaCard) : [h('p', { class: 'muted' }, empty)]));
 }
 
 /** Ventana del área: cabecera y un desplegable por subequipo con su información y el botón para apuntarse. */
@@ -83,12 +91,25 @@ function unlockPage() {
  */
 function goToForm(teamId) {
   if ($('#form').hidden) $('#again').click(); // si ya enviaste uno, vuelve a mostrar el formulario
+  // Si ya habías elegido ciudad en el escaparate y el formulario aún no tiene una, se rellena sola
+  if (!$('[name=city_id]').value && galleryCity) { $('[name=city_id]').value = galleryCity; renderTeamOptions(); }
   selectTeam(teamId);
   const go = () => $('#form').scrollIntoView({ behavior: 'smooth', block: 'start' });
   requestAnimationFrame(() => setTimeout(go, 60)); // espera a que se cierre la ventana y se recoloque la página
 }
 
 function selectTeam(id) { $('[name=team_id]').value = String(id); updateNotice(); }
+
+/** Repuebla el desplegable «Equipo» con los disponibles en la ciudad elegida en el formulario; limpia la elección si ya no está disponible. */
+function renderTeamOptions() {
+  const cityId = $('[name=city_id]').value ? Number($('[name=city_id]').value) : null;
+  const prev = $('[name=team_id]').value;
+  const available = areasFor(cityId);
+  $('[name=team_id]').replaceChildren(h('option', { value: '' }, 'Elige un equipo…'),
+    ...available.map((a) => h('optgroup', { label: a.name }, a.teams.map((t) => h('option', { value: t.id }, t.name)))));
+  $('[name=team_id]').value = available.some((a) => a.teams.some((t) => String(t.id) === prev)) ? prev : '';
+  updateNotice();
+}
 
 function updateNotice() {
   const team = allTeams().find((t) => String(t.id) === $('[name=team_id]').value);
@@ -109,13 +130,15 @@ async function init() {
     $('#areas').replaceChildren(h('p', { class: 'error' }, 'No se han podido cargar los equipos. Recarga la página.'));
     return;
   }
-  renderAreas();
+  $('#gallery-city').replaceChildren(h('option', { value: '' }, 'Todas las ciudades'), ...data.cities.map((c) => h('option', { value: c.id }, c.name)));
   $('[name=city_id]').replaceChildren(h('option', { value: '' }, 'Elige tu ciudad…'), ...data.cities.map((c) => h('option', { value: c.id }, c.name)));
-  $('[name=team_id]').replaceChildren(h('option', { value: '' }, 'Elige un equipo…'),
-    ...data.areas.map((a) => h('optgroup', { label: a.name }, a.teams.map((t) => h('option', { value: t.id }, t.name)))));
+  renderAreas();
+  renderTeamOptions();
 }
 
 $('#search').addEventListener('input', renderAreas);
+$('#gallery-city').addEventListener('change', (e) => { galleryCity = e.target.value; renderAreas(); });
+$('[name=city_id]').addEventListener('change', renderTeamOptions);
 $('[name=team_id]').addEventListener('change', updateNotice);
 $('[name=tenure]').addEventListener('change', updateNotice);
 $('#dlg-close').addEventListener('click', () => $('#dlg').close());
