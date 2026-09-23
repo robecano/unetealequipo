@@ -139,8 +139,13 @@ async function applicationsView(box) {
           me.role === 'admin' && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)))))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
   };
+  // Evita que una respuesta lenta de un filtro anterior sobreescriba la de uno más reciente (dos load() casi seguidos, p. ej. al cambiar dos filtros a la vez)
+  let loadSeq = 0;
   const load = guard(async () => {
-    rows = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}`);
+    const seq = ++loadSeq;
+    const fresh = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}`);
+    if (seq !== loadSeq) return; // ya hay una petición más nueva en marcha: se descarta esta
+    rows = fresh;
     setExport(rows.length);
     draw();
   });
