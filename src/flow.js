@@ -72,13 +72,15 @@ function createFlow({ pco, mail }) {
     }
   }
 
-  /** Avisa a los líderes del equipo y la ciudad. Si no hay ninguno, se avisa a la administración. */
-  async function notifyLeaders(id) {
+  /**
+   * Los líderes ya no reciben un email por cada solicitud: la ven en su lista programada (sendDigests) y en el
+   * panel en todo momento. Si su equipo y ciudad no tienen ningún líder asignado, se avisa a administración
+   * para que lo asigne (si no, nadie se enteraría de esa solicitud hasta que alguien mire el panel).
+   */
+  async function alertIfNoLeader(id) {
     const a = fullApp(id);
-    const leaders = leadersFor(a.team_id, a.city_id);
-    if (!leaders.length) return alertAdmin(id, `Sin líder para ${a.team_name} en ${a.city}`, `${a.name} (${a.phone}) quiere servir en ${a.team_name} en ${a.city} y no hay ningún líder asignado.`);
-    const msg = emails.leaderNoticeEmail({ app: forTemplate(a) });
-    return safeMail(id, 'aviso al líder', msg, leaders.map((l) => l.email));
+    if (leadersFor(a.team_id, a.city_id).length) return;
+    return alertAdmin(id, `Sin líder para ${a.team_name} en ${a.city}`, `${a.name} (${a.phone}) quiere servir en ${a.team_name} en ${a.city} y no hay ningún líder asignado.`);
   }
 
   async function process(id) {
@@ -124,7 +126,7 @@ function createFlow({ pco, mail }) {
 
     await writeNotes(id);
     await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, notFoundInPco: !person }), a.email);
-    await notifyLeaders(id);
+    await alertIfNoLeader(id);
     return 'listo';
   }
 
@@ -197,7 +199,7 @@ function createFlow({ pco, mail }) {
     return sent;
   }
 
-  return { process, retryReceived, retryNotes, refreshCourses, sendDigests, notifyLeaders };
+  return { process, retryReceived, retryNotes, refreshCourses, sendDigests };
 }
 
 module.exports = { createFlow, fullApp, FOLLOWUP_DAYS, OPEN, inDays, now, noteTexts, forTemplate };

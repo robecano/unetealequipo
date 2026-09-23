@@ -44,54 +44,44 @@ test('tiempo mínimo insuficiente: no se avisa al líder, y el asunto/tono es di
   assert.match(m.html, /entrevista previa/);
 });
 
-test('aviso al líder: siempre lleva los datos, sus cursos y si está contrastado con PCO', () => {
-  const m = emails.leaderNoticeEmail({ app: person });
-  assert.equal(m.subject, 'Nueva persona para Cafetería: Ana <b>Ruiz</b>');
-  assert.match(m.html, /Bases 1: Sí · Bases 2: No · GC: Sí/);
-  assert.match(m.html, /Contrastado con PCO: No/);
-  assert.match(m.html, /Contacta con el equipo de PCO de tu campus/);
-  assert.match(m.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
-  assert.match(m.text, /600 111 222/);
-
-  const ok = emails.leaderNoticeEmail({ app: { ...person, contrastado: contrastadoOk } });
-  assert.match(ok.html, /Contrastado con PCO: Sí/);
-  assert.doesNotMatch(ok.html, /⚠/);
-  assert.doesNotMatch(ok.html, /Recuerda que es importante/, 'sin recordatorio si no le falta nada');
+test('resumen del líder: nuevas, seguimiento y resto solo aparecen si hay alguien, con los cursos y el contraste con PCO de cada uno', () => {
+  const vacio = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [], seguimiento: [], resto: [] });
+  assert.doesNotMatch(vacio.html, /Nuevas desde el último resumen|Toca hacer seguimiento|Resto de tu lista/);
+  const lleno = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [{ ...person, name: 'Otra', contrastado: contrastadoOk }] });
+  assert.match(lleno.html, /Nuevas desde el último resumen/);
+  assert.doesNotMatch(lleno.html, /Toca hacer seguimiento/);
+  assert.match(lleno.html, /Resto de tu lista/);
+  assert.match(lleno.html, /Ana &lt;b&gt;Ruiz&lt;\/b&gt;/);
+  assert.match(lleno.html, /Bases 1: Sí · Bases 2: No · GC: Sí/);
+  assert.match(lleno.html, /Contrastado con PCO: No/);
+  assert.match(lleno.html, /Contacta con el equipo de PCO de tu campus/);
+  assert.match(lleno.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
+  assert.match(lleno.html, /Otra/);
+  assert.match(lleno.html, /Contrastado con PCO: Sí/);
 });
 
 test('el recordatorio aparece aunque esté contrastado, si de verdad le falta algo', () => {
   const contrastadoOkConFalta = { ok: true, label: 'Sí', reminder: 'Recuerda que es importante que haga el paso que le falta antes de empezar a servir.' };
-  const m = emails.leaderNoticeEmail({ app: { ...person, contrastado: contrastadoOkConFalta } });
+  const m = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [{ ...person, contrastado: contrastadoOkConFalta }], seguimiento: [], resto: [] });
   assert.match(m.html, /Contrastado con PCO: Sí/);
   assert.doesNotMatch(m.html, /⚠/, 'sin aviso de contraste: solo el recordatorio');
   assert.match(m.html, /Recuerda que es importante que haga el paso que le falta antes de empezar a servir/);
 });
 
-test('resumen del líder: nuevas, seguimiento y resto solo aparecen si hay alguien', () => {
-  const vacio = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [], seguimiento: [], resto: [] });
-  assert.doesNotMatch(vacio.html, /Nuevas desde el último resumen|Toca hacer seguimiento|Resto de tu lista/);
-  const lleno = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [{ ...person, name: 'Otra' }] });
-  assert.match(lleno.html, /Nuevas desde el último resumen/);
-  assert.doesNotMatch(lleno.html, /Toca hacer seguimiento/);
-  assert.match(lleno.html, /Resto de tu lista/);
-  assert.match(lleno.html, /Ana &lt;b&gt;Ruiz&lt;\/b&gt;/);
-  assert.match(lleno.html, /Otra/);
-});
-
 test('el texto del usuario se escapa: no se puede inyectar HTML ni scripts', () => {
-  const m = emails.leaderNoticeEmail({ app: { ...person, name: '<script>alert(1)</script>', team: '<img src=x onerror=alert(1)>' } });
+  const m = emails.leaderDigestEmail({ team: { name: '<img src=x onerror=alert(1)>' }, nuevas: [{ ...person, name: '<script>alert(1)</script>' }], seguimiento: [], resto: [] });
   assert.doesNotMatch(m.html, /<script>/);
   assert.doesNotMatch(m.html, /<img src=x/);
   assert.match(m.html, /&lt;script&gt;/);
   // lo que escribe el admin en el cuerpo también se escapa
-  const r = et.render('leader_notice', { vars: { nombre_completo: 'Ana', equipo: 'X' }, blocks: { persona: 'x' } }, { subject: 's', heading: 'h', body: 'Hola <script>x()</script> **negrita** _cursiva_ [web](https://ejemplo.es) https://otra.es\n\n{{persona}}' });
+  const r = et.render('leader_digest', { vars: { equipo: 'X' }, blocks: { seccion_nuevas: 'x', seccion_seguimiento: 'x', seccion_resto: 'x' } }, { subject: 's', heading: 'h', body: 'Hola <script>x()</script> **negrita** _cursiva_ [web](https://ejemplo.es) https://otra.es\n\n{{seccion_nuevas}}' });
   assert.doesNotMatch(r.html, /<script>/);
   assert.match(r.html, /<b>negrita<\/b>/);
   assert.match(r.html, /<i>cursiva<\/i>/);
   assert.match(r.html, /<a href="https:\/\/ejemplo\.es"[^>]*>web<\/a>/);
   assert.match(r.html, /<a href="https:\/\/otra\.es"[^>]*>https:\/\/otra\.es<\/a>/);
   // un enlace javascript: no se convierte en enlace
-  const j = et.render('leader_notice', { vars: {}, blocks: { persona: 'x' } }, { subject: 's', heading: 'h', body: '[clic](javascript:alert(1))\n\n{{persona}}' });
+  const j = et.render('leader_digest', { vars: {}, blocks: { seccion_nuevas: 'x', seccion_seguimiento: 'x', seccion_resto: 'x' } }, { subject: 's', heading: 'h', body: '[clic](javascript:alert(1))\n\n{{seccion_nuevas}}' });
   assert.doesNotMatch(j.html, /href="javascript/);
 });
 
@@ -104,15 +94,15 @@ test('condicionales y botones', () => {
 });
 
 test('validación: marcadores desconocidos, imprescindibles, bloques y condicionales', () => {
-  const ok = { subject: 'Hola {{nombre_completo}}', heading: 'T', body: 'Persona:\n\n{{persona}}\n\n{{url_panel}}' };
-  assert.deepEqual(et.validate('leader_notice', ok), []);
-  assert.match(et.validate('leader_notice', { ...ok, body: 'Sin datos de la persona' }).join(' '), /Falta \{\{persona\}\}/);
-  assert.match(et.validate('leader_notice', { ...ok, body: ok.body + '\n\n{{inventado}}' }).join(' '), /\{\{inventado\}\} no existe/);
-  assert.match(et.validate('leader_notice', { ...ok, body: 'Mira {{persona}} aquí' }).join(' '), /debe ir solo/);
+  const ok = { subject: 'Hola {{equipo}}', heading: 'T', body: 'Nuevas:\n\n{{seccion_nuevas}}\n\nSeguimiento:\n\n{{seccion_seguimiento}}\n\nResto:\n\n{{seccion_resto}}\n\n{{url_panel}}' };
+  assert.deepEqual(et.validate('leader_digest', ok), []);
+  assert.match(et.validate('leader_digest', { ...ok, body: 'Sin las secciones' }).join(' '), /Falta \{\{seccion_nuevas\}\}/);
+  assert.match(et.validate('leader_digest', { ...ok, body: ok.body + '\n\n{{inventado}}' }).join(' '), /\{\{inventado\}\} no existe/);
+  assert.match(et.validate('leader_digest', { ...ok, body: 'Mira {{seccion_nuevas}} aquí' }).join(' '), /debe ir solo/);
   assert.match(et.validate('applicant_received', { subject: 'x', heading: 'h', body: '{{#encontrado}}abierto' }).join(' '), /Falta cerrar/);
   assert.match(et.validate('applicant_received', { subject: 'x', heading: 'h', body: '{{#raro}}x{{/raro}}' }).join(' '), /no existe/);
-  assert.match(et.validate('leader_notice', { ...ok, body: ok.body + '\n\n[[Ir|ftp://mal]]' }).join(' '), /enlace no válido/);
-  assert.match(et.validate('leader_notice', { ...ok, subject: '' }).join(' '), /asunto/);
+  assert.match(et.validate('leader_digest', { ...ok, body: ok.body + '\n\n[[Ir|ftp://mal]]' }).join(' '), /enlace no válido/);
+  assert.match(et.validate('leader_digest', { ...ok, subject: '' }).join(' '), /asunto/);
   // los textos originales siempre son válidos
   for (const [key, t] of Object.entries(et.TEMPLATES)) assert.deepEqual(et.validate(key, t), [], `original de ${key}`);
 });
@@ -135,7 +125,7 @@ test.after(() => server.close());
 
 test('solo el administrador ve y edita los emails', async () => {
   assert.equal((await req('leader', 'GET', '/api/panel/admin/emails')).status, 403);
-  assert.equal((await req('leader', 'PUT', '/api/panel/admin/emails/leader_notice', {})).status, 403);
+  assert.equal((await req('leader', 'PUT', '/api/panel/admin/emails/leader_digest', {})).status, 403);
   assert.equal((await req('leader', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 2, hour: 9 }] })).status, 403);
   assert.equal((await fetch(base + '/api/panel/admin/emails')).status, 401);
   const data = await (await req('admin', 'GET', '/api/panel/admin/emails')).json();
@@ -144,20 +134,20 @@ test('solo el administrador ve y edita los emails', async () => {
 });
 
 test('guardar un email: se valida, se usa al enviar y se puede restaurar', async () => {
-  const good = { subject: 'AVISO {{nombre_completo}}', heading: 'Nuevo título', body: 'Llama a esta persona:\n\n{{persona}}\n\nGracias.', enabled: true };
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/leader_notice', { ...good, body: 'sin la persona' })).status, 400);
+  const good = { subject: 'AVISO {{equipo}}', heading: 'Nuevo título', body: 'Tu lista:\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\nGracias.', enabled: true };
+  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/leader_digest', { ...good, body: 'sin las secciones' })).status, 400);
   assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/no_existe', good)).status, 404);
-  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/leader_notice', good)).json();
+  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/leader_digest', good)).json();
   assert.equal(saved.customized, true);
   assert.equal(saved.updated_by, 'admin@test.es');
-  const m = emails.leaderNoticeEmail({ app: person });
-  assert.equal(m.subject, 'AVISO Ana <b>Ruiz</b>');
+  const m = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [] });
+  assert.equal(m.subject, 'AVISO Cafetería');
   assert.match(m.html, /Nuevo título/);
-  assert.match(m.html, /Llama a esta persona/);
+  assert.match(m.html, /Tu lista/);
   // restaurar
-  const back = await (await req('admin', 'DELETE', '/api/panel/admin/emails/leader_notice')).json();
+  const back = await (await req('admin', 'DELETE', '/api/panel/admin/emails/leader_digest')).json();
   assert.equal(back.customized, false);
-  assert.match(emails.leaderNoticeEmail({ app: person }).subject, /^Nueva persona para/);
+  assert.match(emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [] }).subject, /^Tu lista/);
 });
 
 test('un email desactivado no se envía, y queda anotado', async () => {
@@ -186,7 +176,7 @@ test('vista previa: documento propio con su CSP, embebible solo desde la misma w
   assert.match(html, /Asunto:<\/b> Asunto &lt;b&gt;x&lt;\/b&gt;/);
   const noAdmin = await fetch(base + '/api/panel/admin/emails/applicant_received/preview', { method: 'POST', headers: { Cookie: cookies.leader, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   assert.equal(noAdmin.status, 403);
-  const malo = await fetch(base + '/api/panel/admin/emails/leader_notice/preview', { method: 'POST', headers: { Cookie: cookies.admin, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ subject: 's', heading: 'h', body: 'sin persona' }) });
+  const malo = await fetch(base + '/api/panel/admin/emails/leader_digest/preview', { method: 'POST', headers: { Cookie: cookies.admin, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ subject: 's', heading: 'h', body: 'sin las secciones' }) });
   assert.match(await malo.text(), /No se puede previsualizar/);
 });
 

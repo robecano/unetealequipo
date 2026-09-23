@@ -56,14 +56,6 @@ function applicantEmail({ app, team, missing = [], notFoundInPco, tenureShort })
   });
 }
 
-/** Aviso inmediato al líder por cada solicitud, tenga o no completados Bases 1, Bases 2 y GC. */
-function leaderNoticeEmail({ app }) {
-  return render('leader_notice', {
-    vars: { nombre: first(app.name), nombre_completo: app.name, equipo: app.team, ciudad: app.city || '' },
-    blocks: { persona: list([app]) },
-  });
-}
-
 /** Lista de un líder: nuevas desde el último envío, a quien toca hacer seguimiento y el resto de su lista abierta. */
 function leaderDigestEmail({ team, nuevas, seguimiento, resto }) {
   return render('leader_digest', {
@@ -80,4 +72,4 @@ function adminAlertEmail(subject, detail) {
   return { subject, html: layout(subject, p(esc(detail)) + btn(`${config.appUrl}/panel`, 'Abrir el panel')), text: detail, enabled: true };
 }
 
-module.exports = { applicantEmail, leaderNoticeEmail, leaderDigestEmail, adminAlertEmail };
+module.exports = { applicantEmail, leaderDigestEmail, adminAlertEmail };

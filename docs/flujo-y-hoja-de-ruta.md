@@ -6,7 +6,7 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
 | Figura | Qué hace |
 |---|---|
 | **Persona** | Se apunta a servir en un equipo. |
-| **Líder de equipo** | Recibe cada solicitud de su equipo y ciudad, tenga o no completados Bases 1, Bases 2 y GC. Llama, invita a visitar el equipo el domingo y hace seguimiento. |
+| **Líder de equipo** | Ve las solicitudes de su equipo y ciudad en su lista programada y en el panel, tenga o no completados Bases 1, Bases 2 y GC. Llama, invita a visitar el equipo el domingo y hace seguimiento. |
 | **Administración** | Da de alta ciudades, equipos y líderes; edita los emails; vigila el sistema. |
 
 ## 2. Flujo, paso a paso
@@ -16,11 +16,9 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
    - Lo que la persona **declara** en el formulario cuenta como hecho aunque no conste en Planning Center.
    - **Sin ficha en Planning Center = como si no tuviera nada** (se trata igual, y el líder lo ve marcado en «Contrastado con PCO»).
 4. **Notas en su perfil de Planning Center** (categoría «Interesado en servir»): interés en servir en el equipo y, si procede, lo que dijo tener y no consta.
-5. **Emails inmediatos, siempre a la vez:**
-   - **A la persona:** lo que consta (o que no se encontró su ficha), lo que le falta si acaso, y que el líder de su equipo la contactará esta semana.
-   - **Al líder de su equipo y ciudad:** sus datos, sus cursos (Bases 1, Bases 2, GC) y si está **contrastado con Planning Center**. Se avisa siempre, tenga o no completados los tres cursos — ya no hay bloqueo ni reparto previo por voluntarios de Bases o GC.
-   - Si no hay ningún líder asignado a ese equipo y ciudad, el aviso llega a administración.
-6. **Lista completa por email**, dos veces por semana (lunes y jueves a las 8:00 por defecto, configurable desde el panel): a cada líder, toda su lista abierta en tres partes — nuevas desde el último envío, a quien toca hacer seguimiento (pasados 7 días sin novedad) y el resto. Antes de cada envío se actualizan los cursos con Planning Center.
+5. **Email inmediato a la persona:** lo que consta (o que no se encontró su ficha), lo que le falta si acaso, y que el líder de su equipo la contactará esta semana. El líder **no** recibe un email por cada solicitud — ya no hay bloqueo ni reparto previo por voluntarios de Bases o GC, pero tampoco aviso inmediato: la solicitud queda visible en el panel y llega en su próxima lista programada.
+   - Si el equipo y la ciudad no tienen ningún líder asignado, se avisa a administración (si no, nadie se enteraría hasta la próxima lista, que tampoco se envía porque no hay a quién).
+6. **Lista completa por email**, dos veces por semana (lunes y jueves a las 8:00 por defecto, configurable desde el panel): a cada líder, toda su lista abierta en tres partes — nuevas desde el último envío, a quien toca hacer seguimiento (pasados 7 días sin novedad) y el resto, con los datos, cursos (Bases 1, Bases 2, GC) y si está **contrastado con Planning Center** de cada persona. Antes de cada envío se actualizan los cursos con Planning Center. Es la única vía por email para el líder — junto con el panel, donde ve su lista al día en todo momento.
 
 ## 3. «Contrastado con Planning Center»
 Columna del panel y del email al líder que dice si lo que consta cuadra con Planning Center:
@@ -31,7 +29,7 @@ Columna del panel y del email al líder que dice si lo que consta cuadra con Pla
 Además, si a la persona le falta de verdad algo (ni Planning Center ni ella misma lo dan por hecho), se añade un recordatorio junto a esa misma columna: *«Recuerda que es importante que haga el paso que le falta antes de empezar a servir»* (o «los pasos», si le falta más de uno). Aparece aunque esté contrastado con Planning Center («Sí»), porque contrastado y completo son cosas distintas.
 
 ## 4. Proceso del líder de equipo
-Recibe: aviso inmediato por cada solicitud de su equipo y ciudad (con sus cursos y si está contrastado) + lista completa dos veces por semana.
+Recibe su lista completa dos veces por semana (con los cursos y el contraste con PCO de cada persona) y siempre puede consultarla al día en el panel. No recibe un email por cada solicitud nueva.
 1. **Esta semana:** llama e invita a visitar el equipo el **próximo domingo** → **Llamé**.
 2. **Domingo:** lo recibe y le enseña el equipo → **Visitó**.
 3. **La semana siguiente:** segunda llamada para consolidar.
@@ -44,7 +42,7 @@ Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos
 ## 6. Hoja de ruta
 | Fase | Qué | Quién | Estado |
 |---|---|---|---|
-| 1 | Web, formulario, panel, emails, aviso inmediato al líder, editor de emails | Desarrollo | ✅ hecho y desplegado |
+| 1 | Web, formulario, panel, emails, lista programada al líder, editor de emails | Desarrollo | ✅ hecho y desplegado |
 | 2 | Alta de líderes (ciudad, equipo, teléfono) | Administración | ⏳ pendiente |
 | 3 | Prueba completa con una ficha de prueba de Planning Center (con y sin ficha, con y sin mezcla) | Desarrollo + administración | ⏳ pendiente |
 | 4 | Lanzamiento suave: una ciudad y 2-3 equipos durante una semana | Todos | ⏳ pendiente |

@@ -74,38 +74,32 @@ test('tiempo mínimo insuficiente: aviso a la persona, sin tocar Planning Center
   assert.equal(notes.length, 0);
 });
 
-test('no existe en Planning Center: se trata como si no tuviera nada, y el líder recibe el aviso igualmente', async () => {
+test('no existe en Planning Center: se trata como si no tuviera nada, y el líder no recibe ningún email por ello', async () => {
   reset(); person = null;
   const id = apply(av);
   assert.equal(await flow.process(id), 'listo');
   const persona = to('ana@x.es')[0];
   assert.match(persona.html, /No hemos encontrado tu ficha/);
-  const lider = to('lider@test.es')[0];
-  assert.ok(lider, 'el líder recibe aviso aunque no haya ficha');
-  assert.match(lider.html, /Contrastado con PCO: No/);
+  assert.equal(to('lider@test.es').length, 0, 'el líder ya no recibe un aviso por cada solicitud');
   const row = db.prepare('SELECT status, pco_person_id, pco_bases1 FROM applications WHERE id=?').get(id);
   assert.equal(row.status, 'listo');
   assert.equal(row.pco_person_id, null);
   assert.equal(row.pco_bases1, null);
 });
 
-test('con ficha y todo completo: el líder ve «Contrastado con PCO: Sí» y sus cursos', async () => {
+test('con ficha y todo completo: se anota su perfil de Planning Center y no se avisa al líder', async () => {
   reset(); person = { id: '55', url: 'https://pco/55' }; course = { bases1: true, bases2: true, gc: true };
   const id = apply(av);
   assert.equal(await flow.process(id), 'listo');
   assert.equal(notes.length, 1);
   assert.match(notes[0][1], /Interesado en servir en AV/);
-  const lider = to('lider@test.es')[0];
-  assert.match(lider.html, /Bases 1: Sí · Bases 2: Sí · GC: Sí/);
-  assert.match(lider.html, /Contrastado con PCO: Sí/);
-  assert.doesNotMatch(lider.html, /⚠/);
-  assert.doesNotMatch(lider.html, /Recuerda que es importante/, 'lo tiene todo: sin recordatorio');
+  assert.equal(to('lider@test.es').length, 0);
   const row = db.prepare('SELECT * FROM applications WHERE id=?').get(id);
   assert.ok(row.followup_at);
   assert.equal(row.pco_person_id, '55');
 });
 
-test('con ficha pero le falta algo: la persona ve lo que falta y el líder recibe el aviso igualmente (sin bloqueo)', async () => {
+test('con ficha pero le falta algo: la persona ve lo que falta; sin bloqueo y sin avisar al líder', async () => {
   reset(); person = { id: '56', url: 'https://pco/56' }; course = { bases1: true, bases2: false, gc: false };
   const id = apply(av);
   assert.equal(await flow.process(id), 'listo');
@@ -113,23 +107,17 @@ test('con ficha pero le falta algo: la persona ve lo que falta y el líder recib
   assert.match(persona.html, /Bases 2/);
   assert.match(persona.html, /hillsong\.es\/gc/);
   assert.match(persona.html, /líder de tu equipo revisará tu solicitud/);
-  const lider = to('lider@test.es')[0];
-  assert.ok(lider, 'ya no hay bloqueo: el líder siempre recibe el aviso');
-  assert.match(lider.html, /Bases 1: Sí · Bases 2: No · GC: No/);
-  assert.match(lider.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
+  assert.equal(to('lider@test.es').length, 0, 'ya no hay bloqueo, pero tampoco aviso inmediato: se ve en su lista');
 });
 
-test('declara tener algo que Planning Center no confirma: se acepta el formulario, se anota aparte y el líder ve el aviso de contraste', async () => {
+test('declara tener algo que Planning Center no confirma: se acepta el formulario y se anota aparte', async () => {
   reset(); person = { id: '57', url: 'https://pco/57' }; course = { bases1: true, bases2: false, gc: true };
   const id = apply(av, 24, { b2: true });
   await flow.process(id);
   assert.equal(notes.length, 2);
   assert.match(notes[0][1], /^Interesado en servir en AV/);
   assert.match(notes[1][1], /^La persona dice haber hecho Bases 2, pero no consta en Planning Center/);
-  const lider = to('lider@test.es')[0];
-  assert.match(lider.html, /Bases 1: Sí · Bases 2: Sí · GC: Sí/, 'lo declarado cuenta como hecho');
-  assert.match(lider.html, /Contrastado con PCO: No/);
-  assert.match(lider.html, /equipo de PCO de tu campus/);
+  assert.equal(to('lider@test.es').length, 0);
 });
 
 test('sin líder asignado: se avisa a la administración y no a nadie más', async () => {
@@ -150,11 +138,11 @@ test('error de Planning Center: la solicitud queda «recibida» para reintentar,
   assert.equal(sent.length, 0);
 });
 
-test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y no reenvía el aviso al líder', async () => {
+test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y no avisa al líder', async () => {
   reset(); person = null; course = { bases1: false, bases2: false, gc: false };
   const id = apply(av);
   await flow.process(id);
-  assert.equal(to('lider@test.es').length, 1);
+  assert.equal(to('lider@test.es').length, 0);
   reset(); person = { id: '900', url: 'https://pco/900' }; course = { bases1: true, bases2: false, gc: false };
   const n = await flow.refreshCourses();
   assert.ok(n >= 1);
@@ -164,7 +152,7 @@ test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y n
   // refreshCourses() recorre TODAS las solicitudes abiertas, así que también enlaza (y anota) la de la prueba
   // «no existe en Planning Center» de más arriba, que se quedó sin ficha; por eso no forzamos notes.length === 1.
   assert.ok(notes.some(([, t]) => t.startsWith('Interesado en servir en AV')));
-  assert.equal(to('lider@test.es').length, 0, 'no se reenvía: el líder ya lo vio al apuntarse');
+  assert.equal(to('lider@test.es').length, 0, 'refreshCourses no avisa a nadie: solo se ve en el panel y en la lista');
 });
 
 test('resumen: nuevas, seguimiento y resto se reparten sin solaparse, y todas llevan sus cursos', async () => {

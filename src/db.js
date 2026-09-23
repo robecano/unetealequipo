@@ -198,8 +198,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
   updated_by TEXT NOT NULL DEFAULT ''
 )`);
 // Las plantillas retiradas (bases_assigned, bases_digest, gc_assigned, gc_digest, applicant_no_pco, applicant_missing,
-// applicant_ready) no se usan aunque el admin las hubiera editado antes; se limpian para no confundir en el panel.
-db.exec(`DELETE FROM email_templates WHERE key IN ('bases_assigned','bases_digest','gc_assigned','gc_digest','applicant_no_pco','applicant_missing','applicant_ready')`);
+// applicant_ready, leader_notice) no se usan aunque el admin las hubiera editado antes; se limpian para no confundir en el panel.
+db.exec(`DELETE FROM email_templates WHERE key IN ('bases_assigned','bases_digest','gc_assigned','gc_digest','applicant_no_pco','applicant_missing','applicant_ready','leader_notice')`);
 
 const getSetting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
 const setSetting = (key, value) =>

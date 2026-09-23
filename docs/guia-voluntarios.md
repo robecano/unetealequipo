@@ -1,15 +1,15 @@
 # Guía rápida para líderes de equipo · Únete al equipo
 
 ## ¿Qué es esto?
-Un sistema que recoge a las personas que quieren **servir en un equipo** de la iglesia y te avisa a ti, líder de ese equipo, para que **les llames** y les ayudes con su siguiente paso.
+Un sistema que recoge a las personas que quieren **servir en un equipo** de la iglesia, para que tú, líder de ese equipo, **les llames** y les ayudes con su siguiente paso.
 
 ## ¿Cómo entro?
 **equipos.iglesiahillsong.com/panel** con **tu email** y la contraseña común (te la da coordinación en persona; no la compartas por escrito). Solo verás las solicitudes de tu equipo y tu ciudad.
 
 ## ¿Qué recibo?
-- Un **email en cuanto alguien se apunta** a tu equipo, tenga o no completados Bases 1, Bases 2 y GC. Trae sus datos, qué cursos tiene y si está «contrastado con Planning Center».
-- Una **lista completa por email dos veces por semana** (lunes y jueves a las 8:00, salvo que administración lo cambie), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto.
-- En el panel siempre ves la lista al día.
+- **No** un email por cada persona que se apunta — para eso está tu lista programada y el panel.
+- Una **lista completa por email dos veces por semana** (lunes y jueves a las 8:00, salvo que administración lo cambie), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «contrastado con Planning Center».
+- En el panel siempre ves la lista al día, así que si no quieres esperar a la próxima lista, entra y mira directamente.
 
 ## Qué hacer con cada persona
 1. **Esta semana:** llámala e invítala a visitar el equipo **el próximo domingo** → pulsa **Llamé**.
