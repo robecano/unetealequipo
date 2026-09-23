@@ -73,6 +73,20 @@ test('resumen del líder: nuevas, seguimiento y resto solo aparecen si hay algui
   assert.match(lleno.html, /Contrastado con PCO: Sí/);
 });
 
+test('lista del líder de Bases y del líder de GC: mismo formato que la del líder de equipo, con la ciudad en el asunto', () => {
+  const bases = emails.basesDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [] });
+  assert.equal(bases.subject, 'Tu lista de Bases · Madrid');
+  assert.match(bases.html, /Bases 1 y Bases 2/);
+  assert.match(bases.html, /Nuevas desde el último resumen/);
+  assert.match(bases.html, /Ana &lt;b&gt;Ruiz&lt;\/b&gt;/);
+  assert.match(bases.html, /Cafetería/, 'como abarca varios equipos, se ve el equipo de cada persona');
+
+  const gc = emails.gcDigestEmail({ city: { name: 'Madrid' }, nuevas: [], seguimiento: [person], resto: [] });
+  assert.equal(gc.subject, 'Tu lista de GC · Madrid');
+  assert.match(gc.html, /Grupos de Conexión/);
+  assert.match(gc.html, /Toca hacer seguimiento/);
+});
+
 test('el recordatorio aparece aunque esté contrastado, si de verdad le falta algo', () => {
   const contrastadoOkConFalta = { ok: true, label: 'Sí', reminder: 'Recuerda que es importante que haga el paso que le falta antes de empezar a servir.' };
   const m = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [{ ...person, contrastado: contrastadoOkConFalta }], seguimiento: [], resto: [] });
@@ -143,7 +157,7 @@ test('solo el administrador ve y edita los emails', async () => {
   assert.equal((await fetch(base + '/api/panel/admin/emails')).status, 401);
   const data = await (await req('admin', 'GET', '/api/panel/admin/emails')).json();
   assert.equal(data.templates.length, Object.keys(et.TEMPLATES).length);
-  assert.deepEqual(Object.keys(data.groups), ['persona', 'lider', 'admin']);
+  assert.deepEqual(Object.keys(data.groups), ['persona', 'lider', 'bases', 'gc', 'admin']);
 });
 
 test('guardar un email: se valida, se usa al enviar y se puede restaurar', async () => {
@@ -179,6 +193,24 @@ test('el aviso a administración de «sin líder» también es editable', async 
   assert.match(edited.html, /Nadie puede atender a Ana Ruiz/);
 
   await req('admin', 'DELETE', '/api/panel/admin/emails/admin_no_leader');
+});
+
+test('el aviso a administración de «sin líder de Bases o de GC» también es editable', async () => {
+  const app = { name: 'Ana Ruiz', phone: '+34 600 111 222', team: 'Cafetería', city: 'Madrid' };
+  const original = emails.adminNoRoleLeaderEmail({ app, tipo: 'Bases' });
+  assert.equal(original.subject, 'Sin líder de Bases en Madrid');
+  assert.match(original.html, /Ana Ruiz/);
+  assert.match(original.html, /Cafetería/);
+
+  const good = { subject: 'FALTA {{tipo}}: {{ciudad}}', heading: 'Ojo', body: 'Nadie de {{tipo}} puede atender a {{nombre_completo}} en {{ciudad}}.', enabled: true };
+  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_role_leader', { ...good, body: 'sin el nombre ni la ciudad' })).status, 400);
+  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_role_leader', good)).json();
+  assert.equal(saved.customized, true);
+  const edited = emails.adminNoRoleLeaderEmail({ app, tipo: 'GC' });
+  assert.equal(edited.subject, 'FALTA GC: Madrid');
+  assert.match(edited.html, /Nadie de GC puede atender a Ana Ruiz/);
+
+  await req('admin', 'DELETE', '/api/panel/admin/emails/admin_no_role_leader');
 });
 
 test('un email desactivado no se envía, y queda anotado', async () => {

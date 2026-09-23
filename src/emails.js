@@ -12,6 +12,7 @@ const COURSES = {
 const person = (a) => {
   const bits = [`<b>${esc(a.name)}</b>`, `<a href="tel:${esc(a.phone)}">${esc(a.phone)}</a>`, `<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`];
   if (a.city) bits.push(esc(a.city));
+  if (a.team) bits.push(esc(a.team));
   if (a.pco_url) bits.push(`<a href="${esc(a.pco_url)}">Perfil</a>`);
   let line = bits.join(' · ');
   if (a.cursos) line += `<br><span style="color:#71717a">${esc(a.cursos)} · Contrastado con PCO: ${esc(a.contrastado?.label ?? '')}</span>`;
@@ -75,6 +76,30 @@ function leaderDigestEmail({ team, nuevas, seguimiento, resto }) {
   });
 }
 
+/** Lista del líder de Bases: quien tenga pendiente Bases 1 o Bases 2 en su ciudad (de cualquier equipo). */
+function basesDigestEmail({ city, nuevas, seguimiento, resto }) {
+  return render('bases_digest', {
+    vars: { ciudad: city.name },
+    blocks: {
+      seccion_nuevas: section('🆕 Nuevas desde el último resumen', nuevas),
+      seccion_seguimiento: section('🔁 Toca hacer seguimiento', seguimiento),
+      seccion_resto: section('📋 Resto de tu lista', resto),
+    },
+  });
+}
+
+/** Lista del líder de GC: quien ya tenga Bases 1 y le falte un GC en su ciudad (de cualquier equipo). */
+function gcDigestEmail({ city, nuevas, seguimiento, resto }) {
+  return render('gc_digest', {
+    vars: { ciudad: city.name },
+    blocks: {
+      seccion_nuevas: section('🆕 Nuevas desde el último resumen', nuevas),
+      seccion_seguimiento: section('🔁 Toca hacer seguimiento', seguimiento),
+      seccion_resto: section('📋 Resto de tu lista', resto),
+    },
+  });
+}
+
 /** Aviso a administración cuando un equipo y ciudad se quedan sin ningún líder asignado. */
 function adminNoLeaderEmail({ app }) {
   return render('admin_no_leader', {
@@ -82,4 +107,11 @@ function adminNoLeaderEmail({ app }) {
   });
 }
 
-module.exports = { applicantEmail, leaderDigestEmail, adminNoLeaderEmail };
+/** Aviso a administración cuando una ciudad se queda sin líder de Bases o de GC. `tipo`: 'Bases' o 'GC'. */
+function adminNoRoleLeaderEmail({ app, tipo }) {
+  return render('admin_no_role_leader', {
+    vars: { nombre_completo: app.name, telefono: app.phone, equipo: app.team, ciudad: app.city || '', tipo },
+  });
+}
+
+module.exports = { applicantEmail, leaderDigestEmail, basesDigestEmail, gcDigestEmail, adminNoLeaderEmail, adminNoRoleLeaderEmail };

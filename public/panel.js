@@ -26,7 +26,7 @@ const say = (m) => alert(m);
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { say(e.message); } };
 
 const STATUS = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', listo: 'Para contactar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
-const ROLE = { admin: 'Administración', leader: 'Líder de equipo' };
+const ROLE = { admin: 'Administración', leader: 'Líder de equipo', bases: 'Líder de Bases', gc: 'Líder de GC' };
 const TENURE = { 0: '< 6 meses', 6: '6–12 meses', 12: '1–2 años', 24: '> 2 años' };
 const fmtDate = (s) => (s ? new Date(s.replace(' ', 'T') + (s.includes('Z') || s.includes('+') ? '' : 'Z')).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : '');
 let me = null;
@@ -52,6 +52,9 @@ function showLogin() {
 const accepted = (pco, self) => !!pco || !!self;
 const mark = (ok) => h('span', { class: ok ? 'ok' : 'no' }, ok ? '✓' : '✗');
 const course = (label, pco, self) => h('td', {}, mark(accepted(pco, self)));
+// A quién le toca llamar (misma regla que el servidor): a Bases si falta B1 o B2; a GC si ya tiene B1 y le falta GC.
+const needsBases = (a) => !accepted(a.pco_bases1, a.self_bases1) || !accepted(a.pco_bases2, a.self_bases2);
+const needsGc = (a) => accepted(a.pco_bases1, a.self_bases1) && !accepted(a.pco_gc, a.self_gc);
 
 /** «Contrastado con PCO»: si no cuadra, el motivo y el consejo (preguntar a la persona, o avisar al equipo de PCO del campus); si le falta algo de verdad, el recordatorio, aunque esté contrastado. */
 function contrastado(c) {
@@ -74,27 +77,34 @@ async function applicationsView(box) {
     setExport(rows.length);
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
     body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', me.role === 'admin' ? 'Líder de equipo' : null, 'Estado', 'B1', 'GC', 'B2', 'Contrastado con PCO', 'Acciones'].filter(Boolean).map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', me.role === 'admin' ? 'Líderes' : null, 'Estado', 'B1', 'GC', 'B2', 'Contrastado con PCO', 'Acciones'].filter(Boolean).map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map((a) => h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
-        // Solo la administración: qué líder (o líderes) de equipo tiene asignada esta persona
-        me.role === 'admin' ? h('td', {}, a.leaders?.length
-          ? a.leaders.map((l) => h('div', {}, l.name || l.email, l.phone ? h('div', {}, h('a', { href: `tel:${l.phone}` }, l.phone)) : null))
-          : h('span', { class: 'no' }, 'Sin líder asignado')) : null,
-        h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null),
+        // Solo la administración: qué líder (de equipo, y de Bases o de GC si le toca) tiene asignado esta persona
+        me.role === 'admin' ? h('td', {},
+          a.leaders?.length ? a.leaders.map((l) => h('div', {}, l.name || l.email, l.phone ? h('div', {}, h('a', { href: `tel:${l.phone}` }, l.phone)) : null)) : h('span', { class: 'no' }, 'Sin líder asignado'),
+          a.basesLeaders ? h('div', { class: 'muted' }, 'Bases: ', a.basesLeaders.length ? a.basesLeaders.map((l) => l.name || l.email).join(', ') : h('span', { class: 'no' }, 'sin asignar')) : null,
+          a.gcLeaders ? h('div', { class: 'muted' }, 'GC: ', a.gcLeaders.length ? a.gcLeaders.map((l) => l.name || l.email).join(', ') : h('span', { class: 'no' }, 'sin asignar')) : null) : null,
+        h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
+          // Para que el líder de equipo vea si Bases o GC ya la han llamado, sin tener que preguntarles
+          needsBases(a) ? h('div', { class: 'muted' }, 'Bases: ', a.bases_contacted_at ? h('span', { class: 'ok' }, `llamó el ${fmtDate(a.bases_contacted_at)}`) : h('span', { class: 'no' }, 'aún no ha llamado')) : null,
+          needsGc(a) ? h('div', { class: 'muted' }, 'GC: ', a.gc_contacted_at ? h('span', { class: 'ok' }, `llamó el ${fmtDate(a.gc_contacted_at)}`) : h('span', { class: 'no' }, 'aún no ha llamado')) : null),
         course('B1', a.pco_bases1, a.self_bases1), course('GC', a.pco_gc, a.self_gc), course('B2', a.pco_bases2, a.self_bases2),
         contrastado(a.contrastado),
         h('td', {}, h('div', { class: 'acts' },
-          ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Llamé') : null,
-          ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
-          ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Resolver') : null,
-          ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'no_continua' }, 'No continúa') : null,
-          h('button', { class: 'danger', onclick: guard(async () => {
+          // Bases y GC marcan si ya han llamado (se lo ve el líder de equipo en «Estado»), sin tocar el estado general
+          ['bases', 'gc'].includes(me.role) ? act(a.id, { contacted: !a[`${me.role}_contacted_at`] }, a[`${me.role}_contacted_at`] ? 'Ya no he llamado' : 'Llamé') : null,
+          // El estado (Llamé/Visitó/Resolver/No continúa) y Borrar los llevan el líder de equipo y admin; Bases y GC solo ven su lista.
+          ['admin', 'leader'].includes(me.role) && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Llamé') : null,
+          ['admin', 'leader'].includes(me.role) && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
+          ['admin', 'leader'].includes(me.role) && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Resolver') : null,
+          ['admin', 'leader'].includes(me.role) && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'no_continua' }, 'No continúa') : null,
+          ['admin', 'leader'].includes(me.role) ? h('button', { class: 'danger', onclick: guard(async () => {
             if (!confirm(`¿Borrar la solicitud de ${a.name}?\n\nSe elimina también su historial en esta web. No se puede deshacer.\n(La nota en su perfil de Planning Center no se borra.)`)) return;
             await api(`/panel/applications/${a.id}`, { method: 'DELETE' });
             load();
-          }) }, 'Borrar'),
+          }) }, 'Borrar') : null,
           me.role === 'admin' && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)))))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
   });
@@ -215,36 +225,42 @@ async function usersView(box) {
   // Un líder se asigna a subequipos (o a un área sin subequipos), no a las áreas que los agrupan
   const selectable = teams.filter((t) => t.parent_id || !teams.some((c) => c.parent_id === t.id)).map((t) => ({ id: t.id, name: t.parent_name && t.parent_name !== t.name ? `${t.parent_name} › ${t.name}` : t.name }));
   const checks = (name, items, selected) => h('div', { class: 'checks' }, items.map((i) => h('label', {}, h('input', { type: 'checkbox', name, value: i.id, checked: selected.includes(i.id) }), i.name)));
-  const edit = (u = { city_ids: [], team_ids: [], active: 1 }) => {
+  const edit = (u = { role: 'leader', city_ids: [], team_ids: [], active: 1 }) => {
+    const role = h('select', { name: 'role' }, ['leader', 'bases', 'gc'].map((k) => h('option', { value: k, selected: k === u.role }, ROLE[k])));
+    const teamsBox = h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', selectable, u.team_ids));
+    const sync = () => { teamsBox.hidden = role.value !== 'leader'; };
+    role.addEventListener('change', sync);
     editor.replaceChildren(h('form', { class: 'card form', onsubmit: guard(async (e) => {
       e.preventDefault();
       const f = new FormData(e.target);
-      const body = { email: f.get('email'), name: f.get('name'), phone: f.get('phone'), active: e.target.active.checked, city_ids: f.getAll('city_ids'), team_ids: f.getAll('team_ids') };
+      const body = { email: f.get('email'), name: f.get('name'), phone: f.get('phone'), role: f.get('role'), active: e.target.active.checked, city_ids: f.getAll('city_ids'), team_ids: f.getAll('team_ids') };
       await api(u.id ? `/panel/admin/users/${u.id}` : '/panel/admin/users', { method: u.id ? 'PUT' : 'POST', body });
       usersView(box);
     }) },
-      h('h3', {}, u.id ? `Editar a ${u.name || u.email}` : 'Nuevo líder de equipo'),
+      h('h3', {}, u.id ? `Editar a ${u.name || u.email}` : 'Nuevo líder'),
       h('div', { class: 'row2' }, h('label', {}, 'Nombre', h('input', { name: 'name', value: u.name || '' })), h('label', {}, 'Email', h('input', { name: 'email', type: 'email', value: u.email || '', required: true }))),
+      h('label', {}, 'Rol', role),
       h('label', {}, 'Teléfono (para que puedan contactarle)', h('input', { name: 'phone', type: 'tel', value: u.phone || '', placeholder: '+34 600 000 000', autocomplete: 'off' })),
       h('div', {}, h('p', { class: 'muted' }, 'Ciudades'), checks('city_ids', cities, u.city_ids)),
-      h('div', {}, h('p', { class: 'muted' }, 'Equipos que lidera'), checks('team_ids', selectable, u.team_ids)),
+      teamsBox,
       h('label', { class: 'checks' }, h('input', { type: 'checkbox', name: 'active', checked: !!u.active }), 'Activo'),
       h('div', { class: 'acts' }, h('button', { class: 'btn btn-sm', type: 'submit' }, 'Guardar'), h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => editor.replaceChildren() }, 'Cancelar'),
         u.id ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: guard(async () => { if (confirm(`¿Eliminar a ${u.email}?`)) { await api(`/panel/admin/users/${u.id}`, { method: 'DELETE' }); usersView(box); } }) }, 'Eliminar') : null)));
+    sync();
     editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const cityName = (id) => cities.find((c) => c.id === id)?.name;
   const teamName = (id) => selectable.find((t) => t.id === id)?.name;
-  box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Añadir líder de equipo')), editor,
+  box.replaceChildren(h('div', { class: 'toolbar' }, h('button', { class: 'btn btn-sm', onclick: () => edit() }, '+ Añadir líder')), editor,
     h('div', { class: 'card' }, users.filter((u) => u.role !== 'admin').map((u) => h('div', { class: 'li' },
-      h('div', {}, h('b', {}, u.name || u.email), u.active ? '' : ' (inactivo)', h('div', { class: 'muted' }, u.email), u.phone ? h('div', {}, '📞 ', h('a', { href: `tel:${u.phone}` }, u.phone)) : h('div', { class: 'muted' }, 'Sin teléfono'), h('div', { class: 'muted' }, [u.city_ids.map(cityName).join(', '), u.team_ids.map(teamName).join(', ')].filter(Boolean).join(' — '))),
+      h('div', {}, h('b', {}, u.name || u.email), ' ', h('span', { class: 'pill s-listo' }, ROLE[u.role] || u.role), u.active ? '' : ' (inactivo)', h('div', { class: 'muted' }, u.email), u.phone ? h('div', {}, '📞 ', h('a', { href: `tel:${u.phone}` }, u.phone)) : h('div', { class: 'muted' }, 'Sin teléfono'), h('div', { class: 'muted' }, [u.city_ids.map(cityName).join(', '), u.role === 'leader' ? u.team_ids.map(teamName).join(', ') : null].filter(Boolean).join(' — '))),
       h('button', { class: 'mini', onclick: () => edit(u) }, 'Editar')))));
 }
 
 
 // ---------- Emails (solo administración) ----------
 const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const GROUP_ICON = { persona: '🙋', lider: '📞', admin: '🛠️' };
+const GROUP_ICON = { persona: '🙋', lider: '📞', bases: '📚', gc: '🤝', admin: '🛠️' };
 
 async function emailsView(box) {
   const data = await api('/panel/admin/emails');

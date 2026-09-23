@@ -17,6 +17,12 @@ const missing = (a) => KEYS.filter((k) => !accepted(a, k));
 /** Línea de texto plano «Bases 1: Sí · Bases 2: No · GC: Sí», con lo aceptado (Planning Center o autodeclarado). */
 const courseLine = (a) => KEYS.map((k) => `${LABEL[k]}: ${accepted(a, k) ? 'Sí' : 'No'}`).join(' · ');
 
+/** ¿Le toca al líder de Bases llamarla? Le falta Bases 1 o Bases 2 (con o sin GC: Bases siempre va primero). */
+const needsBases = (a) => !accepted(a, 'bases1') || !accepted(a, 'bases2');
+
+/** ¿Le toca al líder de GC llamarla? Ya tiene Bases 1 (mínimo para ofrecerle un GC) y le falta el GC. */
+const needsGc = (a) => accepted(a, 'bases1') && !accepted(a, 'gc');
+
 /** Recordatorio si de verdad le falta algo (independiente de si está contrastado con Planning Center o no). */
 function reminderFor(a) {
   const falta = missing(a);
@@ -43,4 +49,4 @@ function contrastadoInfo(a) {
   return { ok: true, reason: 'ok', label: 'Sí', reminder };
 }
 
-module.exports = { LABEL, KEYS, joinEs, accepted, mismatches, missing, courseLine, contrastadoInfo };
+module.exports = { LABEL, KEYS, joinEs, accepted, mismatches, missing, courseLine, needsBases, needsGc, contrastadoInfo };

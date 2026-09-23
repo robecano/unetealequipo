@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL CHECK (role IN ('admin','leader')),
+  role TEXT NOT NULL CHECK (role IN ('admin','leader','bases','gc')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   phone TEXT NOT NULL DEFAULT ''
@@ -66,7 +66,9 @@ CREATE TABLE IF NOT EXISTS applications (
   note_synced INTEGER NOT NULL DEFAULT 0,
   notes_done INTEGER NOT NULL DEFAULT 0,
   error TEXT,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  bases_contacted_at TEXT,
+  gc_contacted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_app_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_app_email ON applications(email);
@@ -113,32 +115,28 @@ try { db.exec('ALTER TABLE applications ADD COLUMN notes_done INTEGER NOT NULL D
 try { db.exec('ALTER TABLE teams ADD COLUMN image_pos INTEGER NOT NULL DEFAULT 30'); } catch { /* ya existe */ }
 
 /**
- * Migración: se retiran los roles «bases» y «gc» (ya no hay voluntarios aparte: todo pasa directo al líder de
- * equipo) y las columnas propias de aquel reparto. El CHECK de `users` no se puede alterar: se reconstruye.
- * Quien tuviera esos roles pasa a «leader» y queda desactivado (sin ciudades/equipos no verá nada, y el admin
- * puede reactivarlo y asignarle un equipo si de verdad debía ser líder).
+ * Migración: se vuelve a permitir el rol «bases» y «gc» (líder de Bases y líder de GC, uno por ciudad, que
+ * llaman a quien le falte ese paso). El CHECK de `users` no se puede alterar: se reconstruye si hace falta
+ * (bases de datos que se quedaron con el CHECK antiguo, solo admin/leader). No toca ningún dato.
  */
 const usersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get()?.sql || '';
-if (/'bases'|'gc'/.test(usersSql)) {
-  const migrated = db.prepare("SELECT id, email, role FROM users WHERE role IN ('bases','gc')").all();
+if (!/'bases'/.test(usersSql)) {
   db.exec('PRAGMA foreign_keys = OFF');
   db.exec(`BEGIN;
     CREATE TABLE users_new (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL CHECK (role IN ('admin','leader')),
+      role TEXT NOT NULL CHECK (role IN ('admin','leader','bases','gc')),
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       phone TEXT NOT NULL DEFAULT ''
     );
-    INSERT INTO users_new (id, email, name, role, active, created_at, phone)
-      SELECT id, email, name, CASE WHEN role IN ('bases','gc') THEN 'leader' ELSE role END, CASE WHEN role IN ('bases','gc') THEN 0 ELSE active END, created_at, phone FROM users;
+    INSERT INTO users_new SELECT * FROM users;
     DROP TABLE users;
     ALTER TABLE users_new RENAME TO users;
     COMMIT;`);
   db.exec('PRAGMA foreign_keys = ON');
-  for (const u of migrated) console.warn(`Aviso: ${u.email} tenía el rol «${u.role}» (retirado); ahora es líder desactivado. Revísalo en el panel.`);
 }
 
 /**
@@ -187,6 +185,10 @@ if (appCols.includes('bases_user_id')) {
   db.exec('PRAGMA foreign_keys = ON');
 }
 
+// Cuándo llamó el líder de Bases o el de GC (null = aún no): así el líder de equipo ve si ya le han contactado.
+try { db.exec('ALTER TABLE applications ADD COLUMN bases_contacted_at TEXT'); } catch { /* ya existe */ }
+try { db.exec('ALTER TABLE applications ADD COLUMN gc_contacted_at TEXT'); } catch { /* ya existe */ }
+
 // Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
   key TEXT PRIMARY KEY,
@@ -197,9 +199,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_by TEXT NOT NULL DEFAULT ''
 )`);
-// Las plantillas retiradas (bases_assigned, bases_digest, gc_assigned, gc_digest, applicant_no_pco, applicant_missing,
-// applicant_ready, leader_notice) no se usan aunque el admin las hubiera editado antes; se limpian para no confundir en el panel.
-db.exec(`DELETE FROM email_templates WHERE key IN ('bases_assigned','bases_digest','gc_assigned','gc_digest','applicant_no_pco','applicant_missing','applicant_ready','leader_notice')`);
+// Las plantillas retiradas (bases_assigned, gc_assigned, applicant_no_pco, applicant_missing, applicant_ready,
+// leader_notice) no se usan aunque el admin las hubiera editado antes; se limpian para no confundir en el panel.
+// bases_digest y gc_digest se reutilizan (misma idea: la lista del líder de Bases o de GC), así que no se tocan.
+db.exec(`DELETE FROM email_templates WHERE key IN ('bases_assigned','gc_assigned','applicant_no_pco','applicant_missing','applicant_ready','leader_notice')`);
 
 const getSetting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
 const setSetting = (key, value) =>

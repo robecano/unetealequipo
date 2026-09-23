@@ -27,6 +27,12 @@ const leadersFor = (teamId, cityId) =>
               JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
               WHERE u.role = 'leader' AND u.active = 1`).all(teamId, cityId);
 
+/** Líder de Bases o de GC (role: 'bases' | 'gc') de una ciudad: uno por ciudad, no por equipo. */
+const roleLeadersFor = (role, cityId) =>
+  db.prepare(`SELECT u.* FROM users u
+              JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
+              WHERE u.role = ? AND u.active = 1`).all(cityId, role);
+
 const forTemplate = (a, pcoUrl) => ({
   name: a.name, email: a.email, phone: a.phone, city: a.city, team: a.team_name, pco_url: pcoUrl,
   cursos: courses.courseLine(a), contrastado: courses.contrastadoInfo(a),
@@ -82,6 +88,14 @@ function createFlow({ pco, mail }) {
     return safeMail(id, `aviso admin: sin líder para ${a.team_name} en ${a.city}`, msg, config.adminNotifyEmail);
   }
 
+  /** Igual que alertIfNoLeader, pero para el líder de Bases o de GC de la ciudad, solo si de verdad le toca. */
+  async function alertIfNoRoleLeader(id, role, tipo, needsIt) {
+    const a = fullApp(id);
+    if (!needsIt(a) || roleLeadersFor(role, a.city_id).length) return;
+    const msg = emails.adminNoRoleLeaderEmail({ app: forTemplate(a), tipo });
+    return safeMail(id, `aviso admin: sin líder de ${tipo} en ${a.city}`, msg, config.adminNotifyEmail);
+  }
+
   async function process(id) {
     let a = fullApp(id);
     if (!a || a.status !== 'recibida') return a?.status;
@@ -126,6 +140,8 @@ function createFlow({ pco, mail }) {
     await writeNotes(id);
     await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, mismatched, notFoundInPco: !person }), a.email);
     await alertIfNoLeader(id);
+    await alertIfNoRoleLeader(id, 'bases', 'Bases', courses.needsBases);
+    await alertIfNoRoleLeader(id, 'gc', 'GC', courses.needsGc);
     return 'listo';
   }
 
@@ -170,30 +186,60 @@ function createFlow({ pco, mail }) {
     return refreshed;
   }
 
+  /** Reparte una lista en nuevas desde el último resumen, a quien toca hacer seguimiento y el resto. */
+  function partition(rows, prevRun) {
+    const nuevas = rows.filter((r) => prevRun && iso(r.created_at) > prevRun);
+    const seguimiento = rows.filter((r) => !nuevas.includes(r) && r.followup_at && r.followup_at <= inDays(1));
+    const resto = rows.filter((r) => !nuevas.includes(r) && !seguimiento.includes(r));
+    return { nuevas: nuevas.map((r) => forTemplate(r)), seguimiento: seguimiento.map((r) => forTemplate(r)), resto: resto.map((r) => forTemplate(r)) };
+  }
+  const openAppsIn = (cityIdsUserId) => db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
+              JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
+              WHERE a.status IN ('listo','contactado','visito') AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)`).all(cityIdsUserId);
+  /** Envía el resumen si hay algo que enviar; devuelve si se ha enviado de verdad (false si el email está desactivado). */
+  async function sendDigest(msg, to) {
+    if (msg.enabled === false) return false;
+    await mail.sendMail({ to, ...msg }).catch((e) => console.error('Resumen:', e.message));
+    return true;
+  }
+
   /**
-   * Resumen a cada líder (uno por equipo), con toda su lista abierta: nuevas desde el último resumen, a quien
-   * toca hacer seguimiento y el resto. Se envía a la hora y los días configurados (por defecto domingo y jueves).
+   * Resumen a cada líder (de equipo, de Bases y de GC), con su lista abierta: nuevas desde el último resumen, a
+   * quien toca hacer seguimiento y el resto. El de equipo va por equipo (ve a todos, tengan o no cursos hechos);
+   * los de Bases y GC van por ciudad, con quien de verdad les toca (courses.needsBases / courses.needsGc).
+   * Se envía a la hora y los días configurados (por defecto domingo y jueves).
    */
   async function sendDigests() {
     let sent = 0;
     const prevRun = getSetting('digest_prev_run'); // marca de antes de esta tanda: lo posterior es «nuevo»
     await refreshCourses();
+
     for (const l of db.prepare("SELECT * FROM users WHERE role='leader' AND active=1").all()) {
       const myTeams = db.prepare(`SELECT t.id, ${TEAM_LABEL} AS name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id JOIN leader_teams lt ON lt.team_id = t.id WHERE lt.user_id = ?`).all(l.id);
-      const rows = db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
-                  JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
-                  WHERE a.status IN ('listo','contactado','visito') AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)`).all(l.id);
+      const rows = openAppsIn(l.id);
       for (const team of myTeams) {
         const mine = rows.filter((r) => r.team_id === team.id);
         if (!mine.length) continue;
-        const nuevas = mine.filter((r) => prevRun && iso(r.created_at) > prevRun);
-        const seguimiento = mine.filter((r) => !nuevas.includes(r) && r.followup_at && r.followup_at <= inDays(1));
-        const resto = mine.filter((r) => !nuevas.includes(r) && !seguimiento.includes(r));
-        const msg = emails.leaderDigestEmail({ team, nuevas: nuevas.map((r) => forTemplate(r)), seguimiento: seguimiento.map((r) => forTemplate(r)), resto: resto.map((r) => forTemplate(r)) });
-        if (msg.enabled === false) continue;
-        await mail.sendMail({ to: l.email, ...msg }).then(() => sent++).catch((e) => console.error('Resumen líder:', e.message));
+        const msg = emails.leaderDigestEmail({ team, ...partition(mine, prevRun) });
+        if (await sendDigest(msg, l.email)) sent++;
       }
     }
+
+    for (const [role, needsIt, buildEmail] of [
+      ['bases', courses.needsBases, emails.basesDigestEmail],
+      ['gc', courses.needsGc, emails.gcDigestEmail],
+    ]) {
+      for (const l of db.prepare('SELECT * FROM users WHERE role=? AND active=1').all(role)) {
+        const rows = openAppsIn(l.id).filter(needsIt);
+        for (const city of db.prepare('SELECT c.* FROM cities c JOIN user_cities uc ON uc.city_id = c.id WHERE uc.user_id = ?').all(l.id)) {
+          const mine = rows.filter((r) => r.city_id === city.id);
+          if (!mine.length) continue;
+          const msg = buildEmail({ city, ...partition(mine, prevRun) });
+          if (await sendDigest(msg, l.email)) sent++;
+        }
+      }
+    }
+
     setSetting('digest_prev_run', now());
     return sent;
   }

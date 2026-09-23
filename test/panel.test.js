@@ -208,3 +208,94 @@ test('el administrador ve el líder de equipo asignado a cada persona (y si no h
   const csvLider = await (await req('leader', 'GET', '/api/panel/applications.csv')).text();
   assert.doesNotMatch(csvLider.split('\r\n')[0], /Líder de equipo/);
 });
+
+let basesId, gcId;
+test('el admin da de alta a un líder de Bases y a uno de GC; no se les asignan equipos aunque se manden team_ids', async () => {
+  const rb = await req('admin', 'POST', '/api/panel/admin/users', { email: 'bases@test.es', name: 'Bea Bases', role: 'bases', phone: '', city_ids: [city], team_ids: [teamA] });
+  assert.equal(rb.status, 200);
+  basesId = (await rb.json()).id;
+  const rg = await req('admin', 'POST', '/api/panel/admin/users', { email: 'gc@test.es', name: 'Gabi GC', role: 'gc', phone: '', city_ids: [city] });
+  assert.equal(rg.status, 200);
+  gcId = (await rg.json()).id;
+  const list = await (await req('admin', 'GET', '/api/panel/admin/users')).json();
+  assert.equal(list.find((u) => u.email === 'bases@test.es').role, 'bases');
+  assert.equal(list.find((u) => u.email === 'gc@test.es').role, 'gc');
+  assert.deepEqual(list.find((u) => u.email === 'bases@test.es').team_ids, [], 'a Bases no se le asignan equipos aunque se hayan mandado team_ids');
+  await login('bases', 'bases@test.es', 'HillsongEspana');
+  await login('gc', 'gc@test.es', 'HillsongEspana');
+});
+
+test('el líder de Bases ve solo a quien le falta Bases 1 o Bases 2 en su ciudad (de cualquier equipo); el de GC, a quien ya tiene Bases 1 y le falta GC', async () => {
+  const faltaB1 = apply('Falta B1', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0, selfBases2: 0 });
+  const faltaB2 = apply('Falta B2', teamB, { pcoBases1: 1, pcoBases2: 0, pcoGc: 1, selfBases2: 0 });
+  const faltaGc = apply('Falta GC', teamA, { pcoBases1: 1, pcoBases2: 1, pcoGc: 0, selfBases2: 0 });
+  const todoHecho = apply('Todo Hecho Roles', teamB, { pcoBases1: 1, pcoBases2: 1, pcoGc: 1, selfBases2: 0 });
+
+  const basesRows = await (await req('bases', 'GET', '/api/panel/applications')).json();
+  const basesNames = basesRows.map((r) => r.name);
+  assert.ok(basesNames.includes('Falta B1'));
+  assert.ok(basesNames.includes('Falta B2'));
+  assert.ok(!basesNames.includes('Falta GC') && !basesNames.includes('Todo Hecho Roles'));
+
+  const gcRows = await (await req('gc', 'GET', '/api/panel/applications')).json();
+  const gcNames = gcRows.map((r) => r.name);
+  assert.ok(gcNames.includes('Falta GC'));
+  assert.ok(!gcNames.includes('Falta B1'), 'sin Bases 1 todavía no le toca a GC');
+  assert.ok(!gcNames.includes('Falta B2') && !gcNames.includes('Todo Hecho Roles'));
+
+  // ninguno de los dos ve solicitudes de otras ciudades
+  const otraCiudadBases = apply('Otra Ciudad Bases', teamA, { city: other, pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
+  assert.ok(!(await (await req('bases', 'GET', '/api/panel/applications')).json()).some((r) => r.id === otraCiudadBases));
+});
+
+test('Bases y GC no pueden cambiar el estado ni borrar (solo el líder de equipo y admin); comentar sí les deja', async () => {
+  const id = apply('Toca Bases', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
+  assert.equal((await req('bases', 'PATCH', `/api/panel/applications/${id}`, { status: 'contactado' })).status, 403);
+  assert.equal(db.prepare('SELECT status FROM applications WHERE id = ?').get(id).status, 'listo', 'no cambió');
+  assert.equal((await req('bases', 'PATCH', `/api/panel/applications/${id}`, { comment: 'La llamé, dice que ya se apuntó' })).status, 200);
+  assert.ok(db.prepare("SELECT 1 FROM application_events WHERE application_id = ? AND event = 'comentario'").get(id));
+  assert.equal((await req('bases', 'DELETE', `/api/panel/applications/${id}`)).status, 403);
+  assert.ok(db.prepare('SELECT 1 FROM applications WHERE id = ?').get(id), 'sigue existiendo');
+});
+
+test('Bases y GC marcan si ya han llamado; el líder de equipo lo ve, y ni él ni admin pueden marcarlo por ellos', async () => {
+  const id = apply('Marcar Llamada', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
+  assert.equal(db.prepare('SELECT bases_contacted_at FROM applications WHERE id = ?').get(id).bases_contacted_at, null);
+  const r = await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contacted: true });
+  assert.equal(r.status, 200);
+  assert.ok(db.prepare('SELECT bases_contacted_at FROM applications WHERE id = ?').get(id).bases_contacted_at);
+  // el líder de equipo (y admin) lo ven en su lista, sin haber hecho nada
+  const rowsLeader = await (await req('leader', 'GET', '/api/panel/applications')).json();
+  assert.ok(rowsLeader.find((x) => x.id === id).bases_contacted_at);
+  // ni admin ni el líder de equipo pueden marcarlo por Bases o GC
+  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { contacted: true })).status, 403);
+  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { contacted: true })).status, 403);
+  // se puede desmarcar
+  await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contacted: false });
+  assert.equal(db.prepare('SELECT bases_contacted_at FROM applications WHERE id = ?').get(id).bases_contacted_at, null);
+});
+
+test('CSV: columnas «Líder de Bases» y «Líder de GC», solo para admin, con «Sin líder asignado» si no hay', async () => {
+  const id = apply('Con Ambos Roles', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
+  const csvAdmin = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Con%20Ambos%20Roles')).text()).replace(/^﻿/, '').trim().split('\r\n');
+  const head = csvAdmin[0].split(';');
+  const iBases = head.indexOf('Líder de Bases'), iGc = head.indexOf('Líder de GC');
+  assert.ok(iBases > 0 && iGc > 0);
+  const fila = csvAdmin[1].split(';');
+  assert.equal(fila[iBases], 'Bea Bases');
+  assert.equal(fila[iGc], '', 'no le toca a GC (sin Bases 1), así que va vacío');
+  const csvLider = await (await req('leader', 'GET', '/api/panel/applications.csv')).text();
+  assert.doesNotMatch(csvLider.split('\r\n')[0], /Líder de Bases|Líder de GC/);
+
+  // «Le llamó Bases» / «Le llamó GC»: visibles para todos (también el líder de equipo), con la fecha si ya llamó
+  const iLlamoBases = head.indexOf('Le llamó Bases'), iLlamoGc = head.indexOf('Le llamó GC');
+  assert.ok(iLlamoBases > 0 && iLlamoGc > 0);
+  assert.equal(fila[iLlamoBases], 'No');
+  assert.equal(fila[iLlamoGc], 'No');
+  await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contacted: true });
+  const filaLuego = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Con%20Ambos%20Roles')).text()).replace(/^﻿/, '').trim().split('\r\n')[1].split(';');
+  assert.match(filaLuego[iLlamoBases], /^\d{2}\/\d{2}\/\d{4}/);
+  const csvLiderLuego = (await (await req('leader', 'GET', '/api/panel/applications.csv?q=Con%20Ambos%20Roles')).text()).replace(/^﻿/, '').trim().split('\r\n');
+  const headLider = csvLiderLuego[0].split(';');
+  assert.match(csvLiderLuego[1].split(';')[headLider.indexOf('Le llamó Bases')], /^\d{2}\/\d{2}\/\d{4}/, 'el líder de equipo también lo ve, sin la columna de líderes');
+});

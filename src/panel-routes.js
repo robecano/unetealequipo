@@ -28,10 +28,21 @@ const str = (v, max = 300) => (typeof v === 'string' ? v.trim().slice(0, max) : 
 const flag = (v) => (v === false || v === 0 || v === '0' ? 0 : 1);
 const ids = (arr) => [...new Set((Array.isArray(arr) ? arr : []).map(Number).filter(Number.isInteger))];
 
-/** Lo que puede ver cada rol: administración, todo; líder, las solicitudes de sus equipos y sus ciudades. */
+// «Aceptado» en SQL, misma regla que courses.accepted: lo que dice Planning Center o, si no, lo que declaró la persona.
+const SQL_ACCEPTED = (k) => `(a.pco_${k} = 1 OR a.self_${k} = 1)`;
+const SQL_NEEDS_BASES = `(NOT ${SQL_ACCEPTED('bases1')} OR NOT ${SQL_ACCEPTED('bases2')})`;
+const SQL_NEEDS_GC = `(${SQL_ACCEPTED('bases1')} AND NOT ${SQL_ACCEPTED('gc')})`;
+
+/**
+ * Lo que puede ver cada rol: administración, todo; líder, las solicitudes de sus equipos y sus ciudades; líder de
+ * Bases o de GC, las de sus ciudades (de cualquier equipo) a quienes de verdad les toca (courses.needsBases/needsGc).
+ */
 function scopeOf(user) {
   if (user.role === 'leader') {
     return { where: ['a.team_id IN (SELECT team_id FROM leader_teams WHERE user_id = ?)', 'a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)'], params: [user.id, user.id] };
+  }
+  if (user.role === 'bases' || user.role === 'gc') {
+    return { where: ['a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)', user.role === 'bases' ? SQL_NEEDS_BASES : SQL_NEEDS_GC], params: [user.id] };
   }
   return { where: [], params: [] };
 }
@@ -45,19 +56,33 @@ function leadersOf(teamId, cityId) {
   return leadersStmt.all(teamId, cityId);
 }
 
+let roleLeadersStmt;
+/** Líder(es) de Bases o de GC activos de una ciudad (uno por ciudad, no por equipo). */
+function roleLeadersOf(role, cityId) {
+  roleLeadersStmt ||= db.prepare(`SELECT u.name, u.email, u.phone FROM users u
+    JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
+    WHERE u.role = ? AND u.active = 1 ORDER BY u.name, u.email`);
+  return roleLeadersStmt.all(cityId, role);
+}
+
 function visibleApplications(user, { status, q } = {}, limit = 500) {
   const { where, params } = scopeOf(user);
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id,
+                       a.bases_contacted_at, a.gc_contacted_at,
                        ${TEAM_LABEL} AS team, c.name AS city
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
   for (const r of rows) {
     r.contrastado = courses.contrastadoInfo(r);
-    // Solo la administración ve qué líder(es) de equipo tiene asignada cada persona (los del equipo y la ciudad de su solicitud)
-    if (user.role === 'admin') r.leaders = leadersOf(r.team_id, r.city_id);
+    // Solo la administración ve qué líder(es) tiene asignada cada persona (de equipo siempre; de Bases o de GC si le toca)
+    if (user.role === 'admin') {
+      r.leaders = leadersOf(r.team_id, r.city_id);
+      if (courses.needsBases(r)) r.basesLeaders = roleLeadersOf('bases', r.city_id);
+      if (courses.needsGc(r)) r.gcLeaders = roleLeadersOf('gc', r.city_id);
+    }
   }
   return rows;
 }
@@ -87,14 +112,18 @@ function csvCell(v) {
   return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+const leadersCell = (list) => (list || []).map((l) => [l.name || l.email, l.phone].filter(Boolean).join(' · ')).join(' / ') || 'Sin líder asignado';
+
 function applicationsCsv(rows, { withLeaders = false } = {}) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
-    ...(withLeaders ? ['Líder de equipo'] : []), 'Contrastado con PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
+    ...(withLeaders ? ['Líder de equipo', 'Líder de Bases', 'Líder de GC'] : []), 'Le llamó Bases', 'Le llamó GC',
+    'Contrastado con PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_person_id ? `https://people.planningcenteronline.com/people/${a.pco_person_id}` : '',
-    ...(withLeaders ? [(a.leaders || []).map((l) => [l.name || l.email, l.phone].filter(Boolean).join(' · ')).join(' / ') || 'Sin líder asignado'] : []),
+    ...(withLeaders ? [leadersCell(a.leaders), a.basesLeaders ? leadersCell(a.basesLeaders) : '', a.gcLeaders ? leadersCell(a.gcLeaders) : ''] : []),
+    a.bases_contacted_at ? localDate(a.bases_contacted_at) : 'No', a.gc_contacted_at ? localDate(a.gc_contacted_at) : 'No',
     a.contrastado.label, a.contrastado.guidance || '', a.contrastado.reminder || '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
   return '﻿' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
@@ -128,10 +157,11 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ application: fullApp(id), events: db.prepare('SELECT * FROM application_events WHERE application_id = ? ORDER BY id DESC').all(id) });
   });
 
-  /** Borra una solicitud y su historial (administración, o el líder dentro de lo suyo). */
+  /** Borra una solicitud y su historial (administración, o el líder de equipo dentro de lo suyo). */
   r.delete('/applications/:id', (req, res) => {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    if (!['admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para borrar', 403);
     db.prepare('DELETE FROM applications WHERE id = ?').run(id); // el historial se borra en cascada
     console.log(`Solicitud ${id} borrada por ${req.user.email}`);
     res.json({ ok: true });
@@ -141,7 +171,9 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     const a = fullApp(id);
-    const { status, comment } = req.body || {};
+    const { status, comment, contacted } = req.body || {};
+    // El estado de la solicitud lo lleva el líder de equipo (y admin); Bases y GC solo ven, comentan y marcan si ya han llamado.
+    if (status !== undefined && !['admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para cambiar el estado', 403);
     if (status !== undefined) {
       if (!['contactado', 'visito', 'confirmado', 'no_continua'].includes(status)) throw bad('Estado no válido');
       const followup = status === 'contactado' || status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
@@ -150,6 +182,13 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
       if (status === 'confirmado' && a.pco_person_id) {
         pco.addNote(a.pco_person_id, `Confirmado como miembro del equipo ${a.team_name} (${a.city})`, 'Interesado en servir').catch((e) => logEvent(id, null, 'nota_error', e.message));
       }
+    }
+    // Que el líder de Bases o de GC marque si ya ha llamado: así el líder de equipo lo ve en su lista, sin tocar el estado general.
+    if (contacted !== undefined) {
+      if (!['bases', 'gc'].includes(req.user.role)) throw bad('Solo el líder de Bases o de GC puede marcar esto', 403);
+      const col = req.user.role === 'bases' ? 'bases_contacted_at' : 'gc_contacted_at';
+      db.prepare(`UPDATE applications SET ${col}=? WHERE id=?`).run(contacted ? now() : null, id);
+      logEvent(id, req.user.id, `contactado_${req.user.role}`, contacted ? 'Sí' : 'No');
     }
     if (str(comment, 500)) logEvent(id, req.user.id, 'comentario', str(comment, 500));
     res.json({ ok: true });
@@ -320,22 +359,25 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     team_ids: db.prepare('SELECT team_id FROM leader_teams WHERE user_id = ?').all(u.id).map((x) => x.team_id),
   });
   admin.get('/users', (_req, res) => res.json(db.prepare("SELECT id,email,name,role,phone,active FROM users ORDER BY name, email").all().map(userRow)));
-  function saveUser(id, b) {
+  const ASSIGNABLE_ROLES = ['leader', 'bases', 'gc'];
+  // Un líder se asigna a equipos y ciudades; Bases y GC solo a ciudades (uno por ciudad, para cualquier equipo).
+  function saveUser(id, b, role) {
     tx(() => {
       db.exec(`DELETE FROM user_cities WHERE user_id = ${id}; DELETE FROM leader_teams WHERE user_id = ${id}`);
       for (const c of ids(b.city_ids)) db.prepare('INSERT OR IGNORE INTO user_cities VALUES (?,?)').run(id, c);
-      for (const t of ids(b.team_ids)) db.prepare('INSERT OR IGNORE INTO leader_teams VALUES (?,?)').run(id, t);
+      if (role === 'leader') for (const t of ids(b.team_ids)) db.prepare('INSERT OR IGNORE INTO leader_teams VALUES (?,?)').run(id, t);
     });
   }
   admin.post('/users', (req, res) => {
     const b = req.body || {};
     const email = str(b.email, 200).toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Email no válido');
+    const role = ASSIGNABLE_ROLES.includes(b.role) ? b.role : 'leader';
     let id;
     const phone = phoneOf(b.phone);
-    try { id = Number(db.prepare("INSERT INTO users (email,name,role,phone) VALUES (?,?,'leader',?)").run(email, str(b.name, 100), phone).lastInsertRowid); }
+    try { id = Number(db.prepare('INSERT INTO users (email,name,role,phone) VALUES (?,?,?,?)').run(email, str(b.name, 100), role, phone).lastInsertRowid); }
     catch { throw bad('Ese email ya existe'); }
-    saveUser(id, b);
+    saveUser(id, b, role);
     res.json({ id });
   });
   admin.put('/users/:id', (req, res) => {
@@ -344,11 +386,13 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const u = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!u) throw bad('No encontrado', 404);
     if (id === req.user.id && b.active === false) throw bad('No puedes desactivarte a ti mismo');
+    if (u.role === 'admin') throw bad('Los administradores no se gestionan aquí');
     const email = b.email === undefined ? u.email : str(b.email, 200).toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw bad('Email no válido');
-    try { db.prepare('UPDATE users SET email=?, name=?, phone=?, active=? WHERE id=?').run(email, str(b.name, 100), phoneOf(b.phone), flag(b.active ?? 1), id); }
+    const role = ASSIGNABLE_ROLES.includes(b.role) ? b.role : u.role;
+    try { db.prepare('UPDATE users SET email=?, name=?, role=?, phone=?, active=? WHERE id=?').run(email, str(b.name, 100), role, phoneOf(b.phone), flag(b.active ?? 1), id); }
     catch { throw bad('Ese email ya existe'); }
-    saveUser(id, b);
+    saveUser(id, b, role);
     res.json({ ok: true });
   });
   admin.delete('/users/:id', (req, res) => {

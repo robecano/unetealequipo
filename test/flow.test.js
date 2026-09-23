@@ -200,3 +200,81 @@ test('resumen: nuevas, seguimiento y resto se reparten sin solaparse, y todas ll
   const nuevasBlock = second.html.split('Nuevas desde el último resumen')[1].split('</ul>')[0];
   assert.doesNotMatch(nuevasBlock, /Vieja Pendiente|Toca Seguimiento/);
 });
+
+test('courses.needsBases / needsGc: reparto entre líder de Bases y de GC', () => {
+  const of = (b1, b2, gc) => ({ pco_bases1: b1, self_bases1: 0, pco_bases2: b2, self_bases2: 0, pco_gc: gc, self_gc: 0 });
+  assert.deepEqual([courses.needsBases(of(0, 0, 0)), courses.needsGc(of(0, 0, 0))], [true, false], 'sin nada: solo Bases');
+  assert.deepEqual([courses.needsBases(of(1, 0, 0)), courses.needsGc(of(1, 0, 0))], [true, true], 'B1 hecho, faltan B2 y GC: los dos');
+  assert.deepEqual([courses.needsBases(of(1, 0, 1)), courses.needsGc(of(1, 0, 1))], [true, false], 'B1 y GC hechos, falta B2: solo Bases');
+  assert.deepEqual([courses.needsBases(of(1, 1, 0)), courses.needsGc(of(1, 1, 0))], [false, true], 'Bases hecho, falta GC: solo GC');
+  assert.deepEqual([courses.needsBases(of(1, 1, 1)), courses.needsGc(of(1, 1, 1))], [false, false], 'todo hecho: ninguno de los dos');
+  // lo autodeclarado cuenta como hecho igual que para el líder de equipo
+  assert.equal(courses.needsBases({ pco_bases1: 0, self_bases1: 1, pco_bases2: 1, self_bases2: 0, pco_gc: 1, self_gc: 0 }), false, 'B1 autodeclarado cuenta como hecho');
+});
+
+test('resumen: el líder de Bases y el de GC reciben su lista por ciudad (de cualquier equipo), en paralelo al líder de equipo', async () => {
+  const c3 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Bases y GC')").run().lastInsertRowid);
+  const tA = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo A')").run().lastInsertRowid);
+  const tB = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo B')").run().lastInsertRowid);
+  const lEquipoA = Number(db.prepare("INSERT INTO users (email, role) VALUES ('equipoa@test.es', 'leader')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lEquipoA, c3);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(lEquipoA, tA);
+  const lBases = Number(db.prepare("INSERT INTO users (email, role) VALUES ('bases3@test.es', 'bases')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lBases, c3);
+  const lGc = Number(db.prepare("INSERT INTO users (email, role) VALUES ('gc3@test.es', 'gc')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lGc, c3);
+  const f3 = createFlow({ pco: { findPerson: async () => ({ id: '1' }) }, mail: { sendMail: async (m) => sent.push(m) } });
+  reset();
+  // Nada hecho, equipo A → solo Bases (y el líder de equipo A, que ve a todos)
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,pco_bases2,pco_gc) VALUES ('Nada Hecho','nada@x.es','600',?,?,24,'listo','1',0,0,0)`).run(c3, tA);
+  // B1 hecho, equipo B (líder de equipo B no existe: no debe fallar por eso) → Bases y GC a la vez
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,pco_bases2,pco_gc) VALUES ('Solo B1','solob1@x.es','600',?,?,24,'listo','1',1,0,0)`).run(c3, tB);
+  // Todo hecho, equipo A → a ninguno de los dos, solo al líder de equipo
+  db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,pco_bases2,pco_gc) VALUES ('Todo Hecho','todo@x.es','600',?,?,24,'listo','1',1,1,1)`).run(c3, tA);
+  await f3.sendDigests();
+
+  const basesMail = to('bases3@test.es')[0];
+  assert.ok(basesMail, 'el líder de Bases recibe su lista');
+  assert.equal(basesMail.subject, 'Tu lista de Bases · Bases y GC');
+  assert.match(basesMail.html, /Nada Hecho/);
+  assert.match(basesMail.html, /Solo B1/);
+  assert.doesNotMatch(basesMail.html, /Todo Hecho/);
+
+  const gcMail = to('gc3@test.es')[0];
+  assert.ok(gcMail, 'el líder de GC recibe su lista');
+  assert.equal(gcMail.subject, 'Tu lista de GC · Bases y GC');
+  assert.doesNotMatch(gcMail.html, /Nada Hecho/, 'sin Bases 1 no le toca a GC todavía');
+  assert.match(gcMail.html, /Solo B1/);
+  assert.doesNotMatch(gcMail.html, /Todo Hecho/);
+
+  const equipoAMail = to('equipoa@test.es')[0];
+  assert.ok(equipoAMail, 'el líder de equipo sigue viendo a todos los suyos, en paralelo');
+  assert.match(equipoAMail.html, /Nada Hecho/);
+  assert.match(equipoAMail.html, /Todo Hecho/);
+});
+
+test('sin líder de Bases o de GC en la ciudad: se avisa a administración con la plantilla propia, y no si ya hay uno', async () => {
+  const c4 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Sin Bases Ni GC')").run().lastInsertRowid);
+  const t4 = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo Huérfano')").run().lastInsertRowid);
+  const l4 = Number(db.prepare("INSERT INTO users (email, role) VALUES ('equipo4@test.es', 'leader')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(l4, c4);
+  db.prepare('INSERT INTO leader_teams VALUES (?,?)').run(l4, t4);
+  // apply() está fijado a la ciudad del módulo (Madrid): aquí hace falta otra ciudad, así que se inserta directo.
+  const applyIn = (cityId, teamId, email) => Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana Ruiz',?,'600111222',?,?,24)`)
+    .run(email, cityId, teamId).lastInsertRowid);
+  reset(); person = { id: '59' }; course = { bases1: false, bases2: false, gc: false };
+  const id = applyIn(c4, t4, 'ana4a@x.es');
+  await flow.process(id);
+  const avisos = to('admin@test.es');
+  assert.equal(avisos.length, 1, 'le falta Bases (no GC, porque para GC hace falta Bases 1 primero): un solo aviso');
+  assert.match(avisos[0].subject, /Sin líder de Bases en Sin Bases Ni GC/);
+  assert.match(avisos[0].html, /Ana Ruiz/);
+
+  // ahora sí hay un líder de Bases en esa ciudad: no se vuelve a avisar
+  const lBases4 = Number(db.prepare("INSERT INTO users (email, role) VALUES ('bases4@test.es', 'bases')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lBases4, c4);
+  reset();
+  const id2 = applyIn(c4, t4, 'ana4b@x.es');
+  await flow.process(id2);
+  assert.equal(to('admin@test.es').length, 0, 'ya hay líder de Bases: no hace falta avisar');
+});
