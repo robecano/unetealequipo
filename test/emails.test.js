@@ -130,7 +130,7 @@ test('solo el administrador ve y edita los emails', async () => {
   assert.equal((await fetch(base + '/api/panel/admin/emails')).status, 401);
   const data = await (await req('admin', 'GET', '/api/panel/admin/emails')).json();
   assert.equal(data.templates.length, Object.keys(et.TEMPLATES).length);
-  assert.deepEqual(Object.keys(data.groups), ['persona', 'lider']);
+  assert.deepEqual(Object.keys(data.groups), ['persona', 'lider', 'admin']);
 });
 
 test('guardar un email: se valida, se usa al enviar y se puede restaurar', async () => {
@@ -148,6 +148,24 @@ test('guardar un email: se valida, se usa al enviar y se puede restaurar', async
   const back = await (await req('admin', 'DELETE', '/api/panel/admin/emails/leader_digest')).json();
   assert.equal(back.customized, false);
   assert.match(emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [] }).subject, /^Tu lista/);
+});
+
+test('el aviso a administración de «sin líder» también es editable', async () => {
+  const app = { name: 'Ana Ruiz', phone: '+34 600 111 222', team: 'Cafetería', city: 'Madrid' };
+  const original = emails.adminNoLeaderEmail({ app });
+  assert.match(original.subject, /^Sin líder para/);
+  assert.match(original.html, /Ana Ruiz/);
+  assert.match(original.html, /600 111 222/);
+
+  const good = { subject: 'FALTA LÍDER: {{equipo}}', heading: 'Ojo', body: 'Nadie puede atender a {{nombre_completo}} ({{telefono}}) en {{equipo}}, {{ciudad}}.', enabled: true };
+  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_leader', { ...good, body: 'sin el nombre ni el equipo' })).status, 400);
+  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_leader', good)).json();
+  assert.equal(saved.customized, true);
+  const edited = emails.adminNoLeaderEmail({ app });
+  assert.equal(edited.subject, 'FALTA LÍDER: Cafetería');
+  assert.match(edited.html, /Nadie puede atender a Ana Ruiz/);
+
+  await req('admin', 'DELETE', '/api/panel/admin/emails/admin_no_leader');
 });
 
 test('un email desactivado no se envía, y queda anotado', async () => {

@@ -37,7 +37,7 @@ Recibe su lista completa dos veces por semana (con los cursos y el contraste con
 5. Puede **borrar** solicitudes de su equipo y ciudad.
 
 ## 5. Administración
-Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos) y líderes (nombre, email, teléfono, ciudades y equipos a su cargo); puede **editar y borrar** líderes (incluido su email) y **borrar equipos** (al borrar un área se borran también sus subequipos; no deja borrar uno con solicitudes registradas, para eso hay que ocultarlo o borrarlas antes); pestaña **Emails** (editar textos, vista previa, prueba, días y horas de la lista completa); ve el líder asignado a cada persona; exporta CSV (con la columna «Contrastado con PCO» y el motivo si no).
+Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos) y líderes (nombre, email, teléfono, ciudades y equipos a su cargo); puede **editar y borrar** líderes (incluido su email) y **borrar equipos** (al borrar un área se borran también sus subequipos; no deja borrar uno con solicitudes registradas, para eso hay que ocultarlo o borrarlas antes); pestaña **Emails** (editar textos, vista previa, prueba, días y horas de la lista completa) — incluye también el propio aviso «Sin líder asignado» que le llega a administración; ve el líder asignado a cada persona; exporta CSV (con la columna «Contrastado con PCO» y el motivo si no).
 
 ## 6. Hoja de ruta
 | Fase | Qué | Quién | Estado |

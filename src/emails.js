@@ -1,6 +1,6 @@
 const config = require('./config');
 const courses = require('./courses');
-const { render, esc, layout, btn, p } = require('./email-templates');
+const { render, esc, p } = require('./email-templates');
 
 const COURSES = {
   bases1: { label: 'Bases 1', url: () => config.urls.bases1 },
@@ -68,8 +68,11 @@ function leaderDigestEmail({ team, nuevas, seguimiento, resto }) {
   });
 }
 
-function adminAlertEmail(subject, detail) {
-  return { subject, html: layout(subject, p(esc(detail)) + btn(`${config.appUrl}/panel`, 'Abrir el panel')), text: detail, enabled: true };
+/** Aviso a administración cuando un equipo y ciudad se quedan sin ningún líder asignado. */
+function adminNoLeaderEmail({ app }) {
+  return render('admin_no_leader', {
+    vars: { nombre_completo: app.name, telefono: app.phone, equipo: app.team, ciudad: app.city || '' },
+  });
 }
 
-module.exports = { applicantEmail, leaderDigestEmail, adminAlertEmail };
+module.exports = { applicantEmail, leaderDigestEmail, adminNoLeaderEmail };

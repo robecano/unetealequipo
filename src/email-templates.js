@@ -20,6 +20,7 @@ const btn = (href, label) =>
 const VARS = {
   nombre: { desc: 'Nombre de pila de la persona' },
   nombre_completo: { desc: 'Nombre y apellidos' },
+  telefono: { desc: 'Teléfono de la persona' },
   equipo: { desc: 'Equipo elegido (Área › Subequipo)' },
   ciudad: { desc: 'Ciudad' },
   cursos: { desc: 'Bases 1, Bases 2 y GC: «Bases 1: Sí · Bases 2: No · GC: Sí»' },
@@ -66,8 +67,15 @@ const TEMPLATES = {
     subject: 'Tu lista · {{equipo}}', heading: 'Tu equipo',
     body: `Esta es tu lista de **{{equipo}}**.\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
   },
+  admin_no_leader: {
+    group: 'admin', title: 'Sin líder asignado', to: 'Administración',
+    when: 'En cuanto llega una solicitud a un equipo y ciudad sin ningún líder asignado. Sin este aviso, nadie se enteraría de esa solicitud hasta que se asigne un líder.',
+    vars: ['nombre_completo', 'telefono', 'equipo', 'ciudad', 'url_panel'], flags: [], required: ['nombre_completo', 'equipo', 'ciudad'],
+    subject: 'Sin líder para {{equipo}} en {{ciudad}}', heading: 'Falta un líder',
+    body: `**{{nombre_completo}}** ({{telefono}}) quiere servir en **{{equipo}}** en {{ciudad}} y no hay ningún líder asignado.\n\nAsigna un líder de equipo para que pueda contactar con esta persona.\n\n${FOOT}`,
+  },
 };
-const GROUPS = { persona: 'A la persona que se apunta', lider: 'Al líder del equipo' };
+const GROUPS = { persona: 'A la persona que se apunta', lider: 'Al líder del equipo', admin: 'A la administración' };
 
 // ---------- Lectura y validación ----------
 function getTemplate(key) {
@@ -190,7 +198,7 @@ function sampleContext(key) {
   const list = `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px"><li>${line(person)}</li><li>${line(persona2)}</li></ul>`;
   const h = (t) => `<h2 style="font-size:16px">${t}</h2>`;
   return {
-    vars: { nombre: 'Ana', nombre_completo: 'Ana Ruiz', equipo: 'Locales › Cafetería', ciudad: 'Madrid', cursos: person.cursos },
+    vars: { nombre: 'Ana', nombre_completo: 'Ana Ruiz', telefono: person.phone, equipo: 'Locales › Cafetería', ciudad: 'Madrid', cursos: person.cursos },
     flags: { encontrado: true, no_encontrado: false },
     blocks: {
       faltan: `<ul style="line-height:1.7;margin:0 0 14px"><li><b>Bases 2</b> — <a href="${esc(config.urls.bases)}">${esc(config.urls.bases)}</a></li><li><b>un Grupo de Conexión (GC)</b> — <a href="${esc(config.urls.gc)}">${esc(config.urls.gc)}</a></li></ul>`,

@@ -120,13 +120,16 @@ test('declara tener algo que Planning Center no confirma: se acepta el formulari
   assert.equal(to('lider@test.es').length, 0);
 });
 
-test('sin líder asignado: se avisa a la administración y no a nadie más', async () => {
+test('sin líder asignado: se avisa a la administración (con la plantilla editable) y no a nadie más', async () => {
   reset(); person = { id: '58' }; course = { bases1: true, bases2: true, gc: true };
   const other = Number(db.prepare("INSERT INTO teams (name) VALUES ('Sin líder')").run().lastInsertRowid);
   const id = apply(other);
   await flow.process(id);
   assert.equal(to('admin@test.es').length, 1);
-  assert.match(to('admin@test.es')[0].subject, /Sin líder para Sin líder/);
+  const aviso = to('admin@test.es')[0];
+  assert.match(aviso.subject, /Sin líder para Sin líder/);
+  assert.match(aviso.html, /Ana Ruiz/);
+  assert.match(aviso.html, /600111222/);
 });
 
 test('error de Planning Center: la solicitud queda «recibida» para reintentar, y no se envía nada', async () => {

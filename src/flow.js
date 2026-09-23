@@ -54,8 +54,6 @@ function createFlow({ pco, mail }) {
       console.error(`Email "${label}" falló:`, e.message);
     }
   };
-  const alertAdmin = (id, subject, detail) => safeMail(id, `aviso admin: ${subject}`, emails.adminAlertEmail(subject, detail), config.adminNotifyEmail);
-
   /** Escribe las notas pendientes; si una falla, se reanuda por la que faltaba sin duplicar las anteriores. */
   async function writeNotes(id) {
     const a = fullApp(id);
@@ -80,7 +78,8 @@ function createFlow({ pco, mail }) {
   async function alertIfNoLeader(id) {
     const a = fullApp(id);
     if (leadersFor(a.team_id, a.city_id).length) return;
-    return alertAdmin(id, `Sin líder para ${a.team_name} en ${a.city}`, `${a.name} (${a.phone}) quiere servir en ${a.team_name} en ${a.city} y no hay ningún líder asignado.`);
+    const msg = emails.adminNoLeaderEmail({ app: forTemplate(a) });
+    return safeMail(id, `aviso admin: sin líder para ${a.team_name} en ${a.city}`, msg, config.adminNotifyEmail);
   }
 
   async function process(id) {

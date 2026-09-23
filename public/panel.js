@@ -244,7 +244,7 @@ async function usersView(box) {
 
 // ---------- Emails (solo administración) ----------
 const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const GROUP_ICON = { persona: '🙋', lider: '📞' };
+const GROUP_ICON = { persona: '🙋', lider: '📞', admin: '🛠️' };
 
 async function emailsView(box) {
   const data = await api('/panel/admin/emails');
