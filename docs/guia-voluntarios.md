@@ -8,7 +8,7 @@ Un sistema que recoge a las personas que quieren **servir en un equipo** de la i
 
 ## ¿Qué recibo?
 - **No** un email por cada persona que se apunta — para eso está tu lista programada y el panel.
-- Una **lista completa por email dos veces por semana** (lunes y jueves a las 8:00, salvo que administración lo cambie), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «contrastado con Planning Center».
+- Una **lista completa por email dos veces por semana** (domingo a las 22:00 y jueves a las 8:00, salvo que administración lo cambie), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «contrastado con Planning Center».
 - En el panel siempre ves la lista al día, así que si no quieres esperar a la próxima lista, entra y mira directamente.
 
 ## Qué hacer con cada persona

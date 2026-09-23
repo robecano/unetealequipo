@@ -16,9 +16,9 @@ function localDayHour(d = new Date()) {
   return { day: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday), hour: Number(p.hour) };
 }
 
-const DEFAULT_SLOTS = [{ day: 1, hour: 8 }, { day: 4, hour: 8 }]; // lunes y jueves, 8:00
+const DEFAULT_SLOTS = [{ day: 0, hour: 22 }, { day: 4, hour: 8 }]; // domingo 22:00 y jueves 8:00
 
-/** Los envíos configurados por el admin, o lunes y jueves a las 8:00 por defecto. Siempre al menos uno. */
+/** Los envíos configurados por el admin, o domingo 22:00 y jueves 8:00 por defecto. Siempre al menos uno. */
 function digestSchedule() {
   const raw = getSetting('digest_schedule');
   if (!raw) return DEFAULT_SLOTS;
@@ -35,7 +35,7 @@ function setDigestSchedule(slots) {
 }
 
 const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-/** Texto legible del horario configurado (para mostrarlo en el panel), p. ej. «lunes y jueves a las 8:00». */
+/** Texto legible del horario configurado (para mostrarlo en el panel), p. ej. «domingo a las 22:00 y jueves a las 8:00». */
 function describeSchedule(slots = digestSchedule()) {
   const hh = (h) => `${String(h).padStart(2, '0')}:00`;
   if (slots.every((s) => s.hour === slots[0].hour)) return `${joinEs(slots.map((s) => DAY_NAMES[s.day]))} a las ${hh(slots[0].hour)}`;

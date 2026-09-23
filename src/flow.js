@@ -172,7 +172,7 @@ function createFlow({ pco, mail }) {
 
   /**
    * Resumen a cada líder (uno por equipo), con toda su lista abierta: nuevas desde el último resumen, a quien
-   * toca hacer seguimiento y el resto. Se envía a la hora y los días configurados (por defecto lunes y jueves).
+   * toca hacer seguimiento y el resto. Se envía a la hora y los días configurados (por defecto domingo y jueves).
    */
   async function sendDigests() {
     let sent = 0;

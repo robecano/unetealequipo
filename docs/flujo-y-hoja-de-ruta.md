@@ -18,7 +18,7 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
 4. **Notas en su perfil de Planning Center** (categoría «Interesado en servir»): interés en servir en el equipo y, si procede, lo que dijo tener y no consta.
 5. **Email inmediato a la persona:** lo que consta (o que no se encontró su ficha), lo que le falta si acaso, y que el líder de su equipo la contactará esta semana. Si dice tener algo (Bases 1, Bases 2 o GC) que Planning Center no confirma, se le avisa que pase por el punto de información el domingo para actualizar sus datos (solo si sí tiene ficha: si no se encontró, ya se le dice que no se pudo comprobar nada). El líder **no** recibe un email por cada solicitud — ya no hay bloqueo ni reparto previo por voluntarios de Bases o GC, pero tampoco aviso inmediato: la solicitud queda visible en el panel y llega en su próxima lista programada.
    - Si el equipo y la ciudad no tienen ningún líder asignado, se avisa a administración (si no, nadie se enteraría hasta la próxima lista, que tampoco se envía porque no hay a quién).
-6. **Lista completa por email**, dos veces por semana (lunes y jueves a las 8:00 por defecto, configurable desde el panel): a cada líder, toda su lista abierta en tres partes — nuevas desde el último envío, a quien toca hacer seguimiento (pasados 7 días sin novedad) y el resto, con los datos, cursos (Bases 1, Bases 2, GC) y si está **contrastado con Planning Center** de cada persona. Antes de cada envío se actualizan los cursos con Planning Center. Es la única vía por email para el líder — junto con el panel, donde ve su lista al día en todo momento.
+6. **Lista completa por email**, dos veces por semana (domingo a las 22:00 y jueves a las 8:00 por defecto, configurable desde el panel): a cada líder, toda su lista abierta en tres partes — nuevas desde el último envío, a quien toca hacer seguimiento (pasados 7 días sin novedad) y el resto, con los datos, cursos (Bases 1, Bases 2, GC) y si está **contrastado con Planning Center** de cada persona. Antes de cada envío se actualizan los cursos con Planning Center. Es la única vía por email para el líder — junto con el panel, donde ve su lista al día en todo momento.
 
 ## 3. «Contrastado con Planning Center»
 Columna del panel y del email al líder que dice si lo que consta cuadra con Planning Center:
@@ -52,7 +52,7 @@ Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos
 | 8 | Mejoras opcionales: recomprobación diaria, modo iPad | Desarrollo | 💡 propuestas |
 
 ## 7. Límites conocidos
-- La actualización de cursos en Planning Center (enlazar fichas nuevas, refrescar Bases 1/2 y GC) ocurre **antes de cada lista completa** (lunes y jueves), no al instante.
+- La actualización de cursos en Planning Center (enlazar fichas nuevas, refrescar Bases 1/2 y GC) ocurre **antes de cada lista completa** (domingo y jueves por defecto), no al instante.
 - El aviso de seguimiento a los 7 días viaja en la lista completa y puede llegar algunos días tarde; el panel muestra la fecha exacta.
 - La app **no escribe** los cursos (Bases 1/2, GC) en Planning Center: eso sigue haciéndose como hasta ahora. Los botones del panel son para el seguimiento.
 - La contraseña de acceso es común (cada persona entra con su email). No debe escribirse en documentos compartidos.
