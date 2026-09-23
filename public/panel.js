@@ -114,9 +114,9 @@ async function applicationsView(box) {
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
           // Solo la administración: si falta asignar el líder de equipo, de Bases o de GC que le corresponde
-          me.role === 'admin' && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin líder de equipo asignado') : null,
-          me.role === 'admin' && a.basesLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin líder de Bases asignado') : null,
-          me.role === 'admin' && a.gcLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin líder de GC asignado') : null,
+          me.role === 'admin' && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Equipo asignado') : null,
+          me.role === 'admin' && a.basesLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Bases asignado') : null,
+          me.role === 'admin' && a.gcLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de GC asignado') : null,
           // Para que el líder de equipo vea si Bases o GC ya la han llamado, sin tener que preguntarles
           needsBases(a) ? h('div', { class: 'muted' }, 'Bases: ', a.bases_contacted_at ? h('span', { class: 'ok' }, `llamó el ${fmtDate(a.bases_contacted_at)}`) : h('span', { class: 'no' }, 'aún no ha llamado')) : null,
           needsGc(a) ? h('div', { class: 'muted' }, 'GC: ', a.gc_contacted_at ? h('span', { class: 'ok' }, `llamó el ${fmtDate(a.gc_contacted_at)}`) : h('span', { class: 'no' }, 'aún no ha llamado')) : null),
