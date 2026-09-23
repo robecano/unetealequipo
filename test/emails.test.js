@@ -199,6 +199,10 @@ test('el horario del resumen se guarda, se valida, y admite varias franjas', asy
   assert.deepEqual(r.slots, [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
   assert.deepEqual(digestSchedule(), [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
   assert.deepEqual((await (await req('admin', 'GET', '/api/panel/admin/emails')).json()).schedule.slots, [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
+  // la descripción de «Tu lista» (lo que ve el admin en la lista de emails) refleja el horario recién guardado, no el de por defecto
+  const digest = (await (await req('admin', 'GET', '/api/panel/admin/emails')).json()).templates.find((t) => t.key === 'leader_digest');
+  assert.match(digest.when, /viernes a las 18:00 y martes a las 09:00/);
+  await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 1, hour: 8 }, { day: 4, hour: 8 }] }); // vuelve al horario por defecto para no afectar otras pruebas
 });
 
 test('la web: «Cómo funciona» nombra Bases 1, GC y Bases 2 y el formulario pregunta en ese orden', () => {

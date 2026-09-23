@@ -244,7 +244,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const t = et.getTemplate(key);
     const def = et.TEMPLATES[key];
     return {
-      key, group: def.group, title: def.title, to: def.to, when: def.when, enabled: t.enabled, customized: t.customized, updated_at: t.updated_at || null, updated_by: t.updated_by || '',
+      key, group: def.group, title: def.title, to: def.to, when: def.when.replace('%HORARIO%', jobs.describeSchedule()), enabled: t.enabled, customized: t.customized, updated_at: t.updated_at || null, updated_by: t.updated_by || '',
       subject: t.subject, heading: t.heading, body: t.body, original: { subject: def.subject, heading: def.heading, body: def.body },
       vars: def.vars.map((n) => ({ name: n, desc: et.VARS[n].desc, block: !!et.VARS[n].block })),
       flags: def.flags.map((n) => ({ name: n, desc: et.FLAGS[n] })), required: def.required,

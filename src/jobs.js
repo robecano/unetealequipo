@@ -1,5 +1,6 @@
 const config = require('./config');
 const { getSetting, setSetting } = require('./db');
+const { joinEs } = require('./courses');
 
 /** Devuelve el identificador de la semana local (año + número ISO), para no repetir un envío dentro de la misma semana. */
 function weekKey(d = new Date()) {
@@ -31,6 +32,14 @@ function digestSchedule() {
 
 function setDigestSchedule(slots) {
   setSetting('digest_schedule', JSON.stringify(slots));
+}
+
+const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+/** Texto legible del horario configurado (para mostrarlo en el panel), p. ej. «lunes y jueves a las 8:00». */
+function describeSchedule(slots = digestSchedule()) {
+  const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+  if (slots.every((s) => s.hour === slots[0].hour)) return `${joinEs(slots.map((s) => DAY_NAMES[s.day]))} a las ${hh(slots[0].hour)}`;
+  return joinEs(slots.map((s) => `${DAY_NAMES[s.day]} a las ${hh(s.hour)}`));
 }
 
 /** ¿Toca enviar el resumen ahora? Cada franja (día + hora) se envía como mucho una vez por semana. */
@@ -69,4 +78,4 @@ function start(flow) {
   setTimeout(hourly, 30000).unref();
 }
 
-module.exports = { start, weekKey, dueSlot, digestSchedule, setDigestSchedule, DEFAULT_SLOTS };
+module.exports = { start, weekKey, dueSlot, digestSchedule, setDigestSchedule, describeSchedule, DEFAULT_SLOTS };

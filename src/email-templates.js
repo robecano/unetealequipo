@@ -61,7 +61,7 @@ const TEMPLATES = {
   },
   leader_digest: {
     group: 'lider', title: 'Tu lista', to: 'Cada líder, un email por equipo',
-    when: 'Los días y horas configurados (por defecto lunes y jueves a las 8:00). Toda tu lista abierta de ese equipo, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes alguna solicitud abierta.',
+    when: 'Los días y horas configurados abajo (ahora mismo: %HORARIO%). Toda tu lista abierta de ese equipo, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes alguna solicitud abierta.',
     vars: ['equipo', 'seccion_nuevas', 'seccion_seguimiento', 'seccion_resto', 'url_panel'], flags: [], required: ['seccion_nuevas', 'seccion_seguimiento', 'seccion_resto'],
     subject: 'Tu lista · {{equipo}}', heading: 'Tu equipo',
     body: `Esta es tu lista de **{{equipo}}**.\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,

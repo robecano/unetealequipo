@@ -272,7 +272,16 @@ async function emailsView(box) {
     h('p', { class: 'muted' }, 'Inmediato: en cuanto alguien se apunta, a la persona. Si Planning Center no responde, se reintenta cada 5 minutos. El líder no recibe un email por cada solicitud: la ve en su lista programada (abajo) y en el panel en todo momento.'),
     h('p', { class: 'muted' }, `Lista del líder: en los días y horas que elijas abajo, en hora de ${data.schedule.tz}. Solo se envía a quien tenga alguna solicitud abierta. Antes de cada envío se actualizan los cursos con Planning Center.`),
     slotsBox,
-    h('button', { class: 'btn btn-sm', onclick: guard(async () => { const out = await api('/panel/admin/email-schedule', { method: 'PUT', body: { slots } }); slots = out.slots.map((s) => ({ ...s })); drawSlots(); say('Horario guardado.'); }) }, 'Guardar horario'));
+    h('button', {
+      class: 'btn btn-sm', onclick: guard(async () => {
+        const out = await api('/panel/admin/email-schedule', { method: 'PUT', body: { slots } });
+        slots = out.slots.map((s) => ({ ...s })); drawSlots();
+        // La descripción de «Tu lista» (abajo) incluye el horario: se refresca para que no quede con el anterior
+        data.templates = (await api('/panel/admin/emails')).templates;
+        list();
+        say('Horario guardado.');
+      }),
+    }, 'Guardar horario'));
 
   const open = (t) => {
     const subject = h('input', { name: 'subject', value: t.subject });
