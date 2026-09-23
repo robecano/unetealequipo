@@ -36,6 +36,7 @@ const roleLeadersFor = (role, cityId) =>
 const forTemplate = (a, pcoUrl) => ({
   name: a.name, email: a.email, phone: a.phone, city: a.city, team: a.team_name, pco_url: pcoUrl,
   cursos: courses.courseLine(a), contrastado: courses.contrastadoInfo(a),
+  basesGaps: courses.basesGaps(a), gcGaps: courses.gcGaps(a),
 });
 
 /** Notas para el perfil de PCO: siempre el interés en servir y, si dice tener algo que no consta, otra nota aparte. */

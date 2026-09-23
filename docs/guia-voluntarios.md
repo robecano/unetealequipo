@@ -21,13 +21,19 @@ Ves a **todos** los que se apuntan a tu equipo, tengan o no completados Bases 1,
 No hace falta que tenga Bases 1, Bases 2 o GC hechos para contactarla: llámala igual y, si le falta algo, coméntaselo tú mismo en la llamada (el email que recibió ya se lo explicó). Junto a cada persona a la que le falte algo verás si el **líder de Bases y/o el de GC ya la han llamado** (y cuándo) — te sirve para saber si hace falta insistir o esperar antes de tu propia llamada.
 
 ## Si eres líder de Bases
-Ves, en **toda tu ciudad** (de cualquier equipo), a quien le falte **Bases 1 o Bases 2**. Llámala para invitarla a apuntarse en hillsong.es/bases y contarle cómo funciona. Cuando la hayas llamado, pulsa **Llamé** — así el líder de su equipo lo sabe sin que tengas que avisarle tú. No cambias el estado general de la solicitud ni puedes borrarla (eso lo lleva el líder de equipo), pero puedes dejar un comentario.
+Ves, en **toda tu ciudad** (de cualquier equipo), a quien le falte **Bases 1 o Bases 2 según Planning Center**. Llámala para invitarla a apuntarse en hillsong.es/bases y contarle cómo funciona. Cuando la hayas llamado, pulsa **Llamé** — así el líder de su equipo lo sabe sin que tengas que avisarle tú. No cambias el estado general de la solicitud ni puedes borrarla (eso lo lleva el líder de equipo), pero puedes dejar un comentario.
+
+También verás a quien **dice** tener Bases 1 o Bases 2 pero Planning Center todavía no lo confirma: en ese caso, en vez de pedirle que lo haga, la columna «Qué le falta» te avisa de que hay que **actualizar el dato en Planning Center** (puede que le faltara marcar la asistencia). Coméntaselo en la llamada y, si confirmas que ya lo hizo, avisa al equipo de PCO de tu campus.
 
 ## Si eres líder de GC
-Ves, en **toda tu ciudad** (de cualquier equipo), a quien ya tenga **Bases 1** y le falte un **Grupo de Conexión**. Llámala para explicarle la importancia de los GC, qué son y cómo funcionan, e invítala a apuntarse en hillsong.es/gc. Igual que Bases: pulsa **Llamé** cuando la hayas contactado.
+Ves, en **toda tu ciudad** (de cualquier equipo), a quien ya tenga **Bases 1** (declarado en el formulario también vale) y le falte un **Grupo de Conexión según Planning Center**. Llámala para explicarle la importancia de los GC, qué son y cómo funcionan, e invítala a apuntarse en hillsong.es/gc. Igual que Bases: pulsa **Llamé** cuando la hayas contactado, y si dice estar en un GC que Planning Center no confirma, la columna «Qué le falta» te avisa de que hay que actualizar el dato en Planning Center.
 
-## La columna «Contrastado con Planning Center»
-Junto a cada persona ves si lo que consta cuadra con Planning Center:
+## La columna «Qué le falta» (Bases y GC) / «Contrastado con Planning Center» (líder de equipo y admin)
+Si eres líder de **Bases o de GC**, junto a cada persona ves, curso a curso, qué le falta:
+- **No lo tiene hecho:** de verdad le falta ese paso.
+- **Actualizar información en PCO contrastándola:** lo dice en el formulario, pero Planning Center no lo confirma (para Bases, puede que le faltara marcar la asistencia). Coméntaselo en la llamada.
+
+Si eres **líder de equipo o admin**, en su lugar ves si lo que consta cuadra con Planning Center:
 - **Sí:** todo en orden.
 - **No** (sin ficha): no la hemos encontrado en Planning Center. Pregúntale en la llamada si hay algún fallo (un email o teléfono distinto al que usó) o si aún no se ha registrado.
 - **No** (con mezcla): dice tener algo (p. ej. Bases 2) que no consta en Planning Center. Si confirmas que ya lo hizo, avisa al equipo de PCO de tu campus para que lo revisen y lo corrijan.
@@ -39,6 +45,7 @@ Si le falta algo de verdad, verás también ahí un recordatorio para que lo com
 - **Llamé** (Bases y GC): marca que ya has contactado a esa persona; se ve en el panel del líder de equipo. Vuelve a pulsarlo si hace falta desmarcarlo.
 - **Borrar** (solo líder de equipo y admin): elimina una solicitud de la lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial).
 - **Exportar CSV:** descarga tu lista.
+- **Cabeceras de la tabla:** pulsa cualquiera (Persona, Equipo, Estado…) para ordenar la lista por esa columna; vuelve a pulsar para invertir el orden.
 
 ## Consejos para la llamada
 - Preséntate, di de parte de qué iglesia llamas y por qué (*«has pedido servir en…»*, o *«nos consta que quieres hacer Bases»* / *«unirte a un Grupo de Conexión»*, según corresponda).

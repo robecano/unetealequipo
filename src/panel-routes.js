@@ -30,8 +30,18 @@ const ids = (arr) => [...new Set((Array.isArray(arr) ? arr : []).map(Number).fil
 
 // «Aceptado» en SQL, misma regla que courses.accepted: lo que dice Planning Center o, si no, lo que declaró la persona.
 const SQL_ACCEPTED = (k) => `(a.pco_${k} = 1 OR a.self_${k} = 1)`;
-const SQL_NEEDS_BASES = `(NOT ${SQL_ACCEPTED('bases1')} OR NOT ${SQL_ACCEPTED('bases2')})`;
-const SQL_NEEDS_GC = `(${SQL_ACCEPTED('bases1')} AND NOT ${SQL_ACCEPTED('gc')})`;
+// «Falta según PCO» en SQL, misma regla que courses.pcoOk negada: IFNULL trata sin ficha (NULL) también como que falta.
+const SQL_PCO_MISSING = (k) => `IFNULL(a.pco_${k}, 0) != 1`;
+// Mismas reglas que courses.needsBases/needsGc: incluye a quien lo autodeclaró pero Planning Center no lo confirma.
+const SQL_NEEDS_BASES = `(${SQL_PCO_MISSING('bases1')} OR ${SQL_PCO_MISSING('bases2')})`;
+const SQL_NEEDS_GC = `(${SQL_ACCEPTED('bases1')} AND ${SQL_PCO_MISSING('gc')})`;
+// Categorías del filtro de administración: en qué falta (según PCO, como Bases/GC) o si está completo (regla laxa, como el resto del sistema).
+const CATEGORY_SQL = {
+  falta_bases1: SQL_PCO_MISSING('bases1'),
+  falta_bases2: SQL_PCO_MISSING('bases2'),
+  falta_gc: SQL_NEEDS_GC,
+  completo: `(${SQL_ACCEPTED('bases1')} AND ${SQL_ACCEPTED('bases2')} AND ${SQL_ACCEPTED('gc')})`,
+};
 
 /**
  * Lo que puede ver cada rol: administración, todo; líder, las solicitudes de sus equipos y sus ciudades; líder de
@@ -65,9 +75,10 @@ function roleLeadersOf(role, cityId) {
   return roleLeadersStmt.all(cityId, role);
 }
 
-function visibleApplications(user, { status, q } = {}, limit = 500) {
+function visibleApplications(user, { status, q, category } = {}, limit = 500) {
   const { where, params } = scopeOf(user);
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
+  if (category && CATEGORY_SQL[category]) where.push(CATEGORY_SQL[category]);
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id,
@@ -77,6 +88,9 @@ function visibleApplications(user, { status, q } = {}, limit = 500) {
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
   for (const r of rows) {
     r.contrastado = courses.contrastadoInfo(r);
+    // Lo que le falta curso a curso según Planning Center (para la vista propia del líder de Bases/GC)
+    r.basesGaps = courses.basesGaps(r);
+    r.gcGaps = courses.gcGaps(r);
     // Solo la administración ve qué líder(es) tiene asignada cada persona (de equipo siempre; de Bases o de GC si le toca)
     if (user.role === 'admin') {
       r.leaders = leadersOf(r.team_id, r.city_id);
@@ -142,14 +156,14 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   r.use(requireAuth);
 
   r.get('/applications.csv', (req, res) => {
-    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60) }, 20000);
+    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), category: str(req.query.category, 20) }, 20000);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="solicitudes-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.setHeader('Cache-Control', 'no-store');
     res.send(applicationsCsv(rows, { withLeaders: req.user.role === 'admin' }));
   });
 
-  r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60) })));
+  r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), category: str(req.query.category, 20) })));
 
   r.get('/applications/:id', (req, res) => {
     const id = Number(req.params.id);

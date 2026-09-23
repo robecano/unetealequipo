@@ -201,15 +201,23 @@ test('resumen: nuevas, seguimiento y resto se reparten sin solaparse, y todas ll
   assert.doesNotMatch(nuevasBlock, /Vieja Pendiente|Toca Seguimiento/);
 });
 
-test('courses.needsBases / needsGc: reparto entre líder de Bases y de GC', () => {
+test('courses.needsBases / needsGc: reparto entre líder de Bases y de GC (según lo que confirma PCO, no lo autodeclarado)', () => {
   const of = (b1, b2, gc) => ({ pco_bases1: b1, self_bases1: 0, pco_bases2: b2, self_bases2: 0, pco_gc: gc, self_gc: 0 });
   assert.deepEqual([courses.needsBases(of(0, 0, 0)), courses.needsGc(of(0, 0, 0))], [true, false], 'sin nada: solo Bases');
   assert.deepEqual([courses.needsBases(of(1, 0, 0)), courses.needsGc(of(1, 0, 0))], [true, true], 'B1 hecho, faltan B2 y GC: los dos');
   assert.deepEqual([courses.needsBases(of(1, 0, 1)), courses.needsGc(of(1, 0, 1))], [true, false], 'B1 y GC hechos, falta B2: solo Bases');
   assert.deepEqual([courses.needsBases(of(1, 1, 0)), courses.needsGc(of(1, 1, 0))], [false, true], 'Bases hecho, falta GC: solo GC');
   assert.deepEqual([courses.needsBases(of(1, 1, 1)), courses.needsGc(of(1, 1, 1))], [false, false], 'todo hecho: ninguno de los dos');
-  // lo autodeclarado cuenta como hecho igual que para el líder de equipo
-  assert.equal(courses.needsBases({ pco_bases1: 0, self_bases1: 1, pco_bases2: 1, self_bases2: 0, pco_gc: 1, self_gc: 0 }), false, 'B1 autodeclarado cuenta como hecho');
+  // Ahora Bases/GC ven también a quien lo autodeclaró pero Planning Center no lo confirma (mismatch: hay que actualizar PCO)
+  const mismatchB1 = { pco_bases1: 0, self_bases1: 1, pco_bases2: 1, self_bases2: 0, pco_gc: 1, self_gc: 0 };
+  assert.equal(courses.needsBases(mismatchB1), true, 'B1 autodeclarado sin confirmar en PCO: le toca a Bases igualmente');
+  assert.deepEqual(courses.basesGaps(mismatchB1), [{ key: 'bases1', label: 'Bases 1', mismatch: true }]);
+  const mismatchGc = { pco_bases1: 1, self_bases1: 0, pco_bases2: 1, self_bases2: 0, pco_gc: 0, self_gc: 1 };
+  assert.equal(courses.needsGc(mismatchGc), true, 'GC autodeclarado sin confirmar en PCO: le toca a GC igualmente');
+  assert.deepEqual(courses.gcGaps(mismatchGc), [{ key: 'gc', label: 'GC', mismatch: true }]);
+  // Sin ficha (pco_* es null): se trata como que falta de verdad, no como mismatch
+  const sinFicha = { pco_bases1: null, self_bases1: 0, pco_bases2: null, self_bases2: 0, pco_gc: null, self_gc: 0 };
+  assert.deepEqual(courses.basesGaps(sinFicha), [{ key: 'bases1', label: 'Bases 1', mismatch: false }, { key: 'bases2', label: 'Bases 2', mismatch: false }]);
 });
 
 test('resumen: el líder de Bases y el de GC reciben su lista por ciudad (de cualquier equipo), en paralelo al líder de equipo', async () => {

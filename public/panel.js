@@ -52,9 +52,12 @@ function showLogin() {
 const accepted = (pco, self) => !!pco || !!self;
 const mark = (ok) => h('span', { class: ok ? 'ok' : 'no' }, ok ? '✓' : '✗');
 const course = (label, pco, self) => h('td', {}, mark(accepted(pco, self)));
-// A quién le toca llamar (misma regla que el servidor): a Bases si falta B1 o B2; a GC si ya tiene B1 y le falta GC.
-const needsBases = (a) => !accepted(a.pco_bases1, a.self_bases1) || !accepted(a.pco_bases2, a.self_bases2);
-const needsGc = (a) => accepted(a.pco_bases1, a.self_bases1) && !accepted(a.pco_gc, a.self_gc);
+// A quién le toca llamar (misma regla que el servidor): a Bases si Planning Center no confirma B1 o B2 (aunque
+// la persona lo declarase); a GC si ya tiene B1 (declarado cuenta) y Planning Center no confirma el GC.
+const needsBases = (a) => !a.pco_bases1 || !a.pco_bases2;
+const needsGc = (a) => accepted(a.pco_bases1, a.self_bases1) && !a.pco_gc;
+
+const CATEGORY = { falta_bases1: 'Falta Bases 1', falta_bases2: 'Falta Bases 2', falta_gc: 'Falta GC', completo: 'Completo' };
 
 /** «Contrastado con PCO»: si no cuadra, el motivo y el consejo (preguntar a la persona, o avisar al equipo de PCO del campus); si le falta algo de verdad, el recordatorio, aunque esté contrastado. */
 function contrastado(c) {
@@ -62,23 +65,51 @@ function contrastado(c) {
   return h('td', {}, h('span', { class: c.ok ? 'ok' : 'no' }, c.label), !c.ok ? h('div', { class: 'warn-mini' }, c.guidance) : null, c.reminder ? h('div', { class: 'warn-mini' }, c.reminder) : null);
 }
 
+/** Lo que le falta a esta persona según Planning Center, para la vista propia del líder de Bases o de GC: cada curso pendiente, y si es autodeclarado sin confirmar (aviso de actualizar PCO) o falta de verdad. */
+function roleGaps(gaps) {
+  if (!gaps?.length) return h('td', {}, h('span', { class: 'ok' }, 'Nada pendiente'));
+  return h('td', {}, gaps.map((g) => h('div', {},
+    g.mismatch
+      ? h('span', { class: 'no' }, `${g.label}: actualizar información en PCO contrastándola${g.key === 'gc' ? '' : '. Es posible que le haya faltado marcar la asistencia.'}`)
+      : h('span', { class: 'muted' }, `${g.label}: no lo tiene hecho`))));
+}
+
 async function applicationsView(box) {
   const q = h('input', { type: 'search', placeholder: 'Buscar nombre, email, teléfono…' });
   const st = h('select', {}, h('option', { value: '' }, 'Todos los estados'), ...Object.entries(STATUS).map(([k, v]) => h('option', { value: k }, v)));
+  const cat = me.role === 'admin' ? h('select', {}, h('option', { value: '' }, 'Todas las categorías'), ...Object.entries(CATEGORY).map(([k, v]) => h('option', { value: k }, v))) : null;
   const body = h('div');
-  // Descarga en CSV con los mismos filtros que estás viendo (estado y búsqueda)
+  const isRoleLeader = ['bases', 'gc'].includes(me.role);
+  const infoHeader = isRoleLeader ? 'Qué le falta' : 'Contrastado con PCO';
+  let rows = [];
+  let sortKey = null, sortDir = 1;
+  const SORTERS = {
+    persona: (a) => (a.name || '').toLowerCase(),
+    equipo: (a) => `${a.team || ''} ${a.city || ''}`.toLowerCase(),
+    estado: (a) => STATUS[a.status] || a.status,
+    b1: (a) => (accepted(a.pco_bases1, a.self_bases1) ? 1 : 0),
+    gc: (a) => (accepted(a.pco_gc, a.self_gc) ? 1 : 0),
+    b2: (a) => (accepted(a.pco_bases2, a.self_bases2) ? 1 : 0),
+    info: (a) => (isRoleLeader ? (a[me.role === 'bases' ? 'basesGaps' : 'gcGaps']?.length ? 1 : 0) : (a.contrastado?.ok ? 0 : 1)),
+  };
+  const sorted = () => {
+    if (!sortKey) return rows;
+    const f = SORTERS[sortKey];
+    return [...rows].sort((x, y) => { const vx = f(x), vy = f(y); return (vx > vy ? 1 : vx < vy ? -1 : 0) * sortDir; });
+  };
+  // Descarga en CSV con los mismos filtros que estás viendo (estado, categoría y búsqueda)
   const exportLink = h('a', { class: 'mini export', download: '' }, '⬇ Exportar CSV');
   const setExport = (n) => {
-    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}`;
+    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}`;
     exportLink.textContent = `⬇ Exportar CSV (${n})`;
   };
-  const load = guard(async () => {
-    const rows = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}`);
-    setExport(rows.length);
+  const th = (key, label) => h('th', key ? { class: 'sortable', onclick: () => { sortDir = sortKey === key ? -sortDir : 1; sortKey = key; draw(); } } : {}, label, key && sortKey === key ? (sortDir > 0 ? ' ▲' : ' ▼') : '');
+  const draw = () => {
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
-    body.replaceChildren(rows.length ? h('div', { class: 'tablewrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Persona', 'Equipo', me.role === 'admin' ? 'Líderes' : null, 'Estado', 'B1', 'GC', 'B2', 'Contrastado con PCO', 'Acciones'].filter(Boolean).map((t) => h('th', {}, t)))),
-      h('tbody', {}, rows.map((a) => h('tr', {},
+    const list = sorted();
+    body.replaceChildren(list.length ? h('div', { class: 'tablewrap' }, h('table', {},
+      h('thead', {}, h('tr', {}, [th('persona', 'Persona'), th('equipo', 'Equipo'), me.role === 'admin' ? th(null, 'Líderes') : null, th('estado', 'Estado'), th('b1', 'B1'), th('gc', 'GC'), th('b2', 'B2'), th('info', infoHeader), th(null, 'Acciones')].filter(Boolean))),
+      h('tbody', {}, list.map((a) => h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email), h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         // Solo la administración: qué líder (de equipo, y de Bases o de GC si le toca) tiene asignado esta persona
@@ -91,7 +122,7 @@ async function applicationsView(box) {
           needsBases(a) ? h('div', { class: 'muted' }, 'Bases: ', a.bases_contacted_at ? h('span', { class: 'ok' }, `llamó el ${fmtDate(a.bases_contacted_at)}`) : h('span', { class: 'no' }, 'aún no ha llamado')) : null,
           needsGc(a) ? h('div', { class: 'muted' }, 'GC: ', a.gc_contacted_at ? h('span', { class: 'ok' }, `llamó el ${fmtDate(a.gc_contacted_at)}`) : h('span', { class: 'no' }, 'aún no ha llamado')) : null),
         course('B1', a.pco_bases1, a.self_bases1), course('GC', a.pco_gc, a.self_gc), course('B2', a.pco_bases2, a.self_bases2),
-        contrastado(a.contrastado),
+        isRoleLeader ? roleGaps(a[me.role === 'bases' ? 'basesGaps' : 'gcGaps']) : contrastado(a.contrastado),
         h('td', {}, h('div', { class: 'acts' },
           // Bases y GC marcan si ya han llamado (se lo ve el líder de equipo en «Estado»), sin tocar el estado general
           ['bases', 'gc'].includes(me.role) ? act(a.id, { contacted: !a[`${me.role}_contacted_at`] }, a[`${me.role}_contacted_at`] ? 'Ya no he llamado' : 'Llamé') : null,
@@ -107,10 +138,16 @@ async function applicationsView(box) {
           }) }, 'Borrar') : null,
           me.role === 'admin' && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)))))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
+  };
+  const load = guard(async () => {
+    rows = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}`);
+    setExport(rows.length);
+    draw();
   });
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, exportLink), body);
+  if (cat) cat.addEventListener('change', load);
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, exportLink), body);
   load();
 }
 

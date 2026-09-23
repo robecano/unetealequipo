@@ -60,6 +60,7 @@ dialog h3{font-size:28px;margin:6px 0 12px}dialog p{color:var(--muted)}dialog .b
 .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.toolbar input,.toolbar select{width:auto;min-width:160px}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r)}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:500;background:var(--bg2);white-space:nowrap}tr:last-child td{border-bottom:0}
+th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}
 .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;border:1px solid var(--line);white-space:nowrap}
 .s-listo,.s-recibida{color:var(--accent);border-color:var(--accent)}.s-pendiente_bases,.s-no_apto_aun,.s-sin_pco{color:var(--warn);border-color:rgba(251,191,36,.5)}
 .s-confirmado{color:var(--ok);border-color:var(--ok)}.s-no_continua{color:var(--err);border-color:var(--err)}

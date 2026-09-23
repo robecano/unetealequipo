@@ -21,9 +21,9 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
 5. **Email inmediato a la persona:** lo que consta (o que no se encontró su ficha), lo que le falta si acaso, y que el líder de su equipo la contactará esta semana. Si dice tener algo que Planning Center no confirma, se le avisa que pase por el punto de información el domingo para actualizar sus datos (solo si sí tiene ficha: si no se encontró, ya se le dice que no se pudo comprobar nada).
    - **Nadie recibe un email por cada solicitud** (ni el líder de equipo, ni el de Bases, ni el de GC): la solicitud queda visible en el panel y llega en la próxima lista programada de quien corresponda.
    - Si el equipo y la ciudad no tienen líder de equipo asignado, o la ciudad no tiene líder de Bases o de GC cuando le toca a uno de ellos, se avisa a administración (si no, nadie se enteraría).
-6. **Reparto entre Bases, GC y el líder de equipo.** El líder de equipo ve **siempre** a todos los de su equipo, tengan o no completados los cursos. En paralelo, Bases y GC ven (de cualquier equipo de su ciudad) a quien de verdad les toca llamar:
+6. **Reparto entre Bases, GC y el líder de equipo.** El líder de equipo ve **siempre** a todos los de su equipo, tengan o no completados los cursos (para él, lo autodeclarado cuenta como hecho igual que en el resto del sistema). En paralelo, Bases y GC ven (de cualquier equipo de su ciudad) a quien de verdad les toca llamar, **según lo que confirma Planning Center** (Bases 1 solo cuenta como prerrequisito de GC con la regla laxa: autodeclarado también vale para eso):
 
-   | Bases 1 | Bases 2 | GC | Líder de Bases | Líder de GC |
+   | Bases 1 (PCO) | Bases 2 (PCO) | GC (PCO) | Líder de Bases | Líder de GC |
    |:-:|:-:|:-:|:-:|:-:|
    | ✗ | — | — | ✔ | |
    | ✔ | ✗ | ✗ | ✔ | ✔ |
@@ -31,7 +31,7 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
    | ✔ | ✔ | ✗ | | ✔ |
    | ✔ | ✔ | ✔ | | |
 
-   Lo autodeclarado en el formulario cuenta como hecho igual que en el resto del sistema.
+   Esto incluye a quien **autodeclaró** un curso que Planning Center todavía no confirma: le sigue tocando a Bases o a GC, pero en vez de pedirle que haga el curso, ven el aviso de *«actualizar información en PCO contrastándola»* (y, para Bases 1/Bases 2, que puede que le faltara marcar la asistencia) — así se revisa el dato en vez de duplicar el paso.
 7. **Lista completa por email**, dos veces por semana (domingo a las 22:00 y jueves a las 8:00 por defecto, configurable desde el panel): a cada líder de equipo (por equipo), de Bases y de GC (por ciudad), su lista abierta en tres partes — nuevas desde el último envío, a quien toca hacer seguimiento (pasados 7 días sin novedad) y el resto, con los datos, cursos y si está **contrastado con Planning Center** de cada persona. Antes de cada envío se actualizan los cursos con Planning Center. Es la única vía por email — junto con el panel, donde cada uno ve su lista al día en todo momento.
 
 ## 3. «Contrastado con Planning Center»
@@ -52,14 +52,16 @@ Todos reciben su lista completa dos veces por semana (con los cursos y el contra
 4. **Resolver** (queda anotado en su perfil de Planning Center) o **No continúa**.
 5. Puede **borrar** solicitudes de su equipo y ciudad.
 
-**Líder de Bases** (ve, en toda su ciudad, a quien le falte Bases 1 o Bases 2): llama para invitarle a apuntarse y pulsa **Llamé** para marcarlo — así el líder de equipo lo ve en su lista, sin tener que preguntar. No cambia el estado general de la solicitud ni puede borrarla (eso lo lleva el líder de equipo), pero sí puede dejar un comentario.
+**Líder de Bases** (ve, en toda su ciudad, a quien le falte Bases 1 o Bases 2 según Planning Center): llama para invitarle a apuntarse y pulsa **Llamé** para marcarlo — así el líder de equipo lo ve en su lista, sin tener que preguntar. En vez de «Contrastado con PCO» ve una columna **«Qué le falta»**, curso a curso: si de verdad no lo tiene, o si lo autodeclaró y Planning Center no lo confirma (aviso de actualizar el dato, con la nota de que puede que le faltara marcar la asistencia). No cambia el estado general de la solicitud ni puede borrarla (eso lo lleva el líder de equipo), pero sí puede dejar un comentario.
 
-**Líder de GC** (ve, en toda su ciudad, a quien ya tenga Bases 1 y le falte un GC): llama para ofrecérselo, con el mismo botón **Llamé**. Mismas posibilidades que el líder de Bases: ver su lista, marcar si ya llamó y comentar.
+**Líder de GC** (ve, en toda su ciudad, a quien ya tenga Bases 1 —autodeclarado cuenta— y le falte el GC según Planning Center): llama para ofrecérselo, con el mismo botón **Llamé**. Mismas posibilidades que el líder de Bases: ver su lista con «Qué le falta», marcar si ya llamó y comentar.
 
 El líder de equipo ve, junto a cada persona a la que le falte algo, si el líder de Bases y/o el de GC ya la han llamado (y cuándo) — así sabe si hace falta insistir o esperar antes de su propia llamada.
 
 ## 5. Administración
 Alta de ciudades, equipos (áreas y subequipos, fotos, mínimos de meses, avisos) y líderes — de equipo, de Bases o de GC, con nombre, email, teléfono y ciudades (los de equipo, además, sus equipos); puede **editar y borrar** líderes (incluido su email) y **borrar equipos** (al borrar un área se borran también sus subequipos; no deja borrar uno con solicitudes registradas, para eso hay que ocultarlo o borrarlas antes); pestaña **Emails** (editar textos, vista previa, prueba, días y horas de la lista completa) — incluye también los avisos a administración cuando falta un líder de equipo, de Bases o de GC; ve qué líder(es) tiene asignada cada persona; exporta CSV (con la columna «Contrastado con PCO», el motivo si no, el líder de equipo/Bases/GC de cada uno, y si Bases y GC ya han llamado).
+
+Además de filtrar por estado y buscar, el admin tiene un filtro de **categoría** (Falta Bases 1, Falta Bases 2, Falta GC, Completo), disponible tanto en el panel como en el CSV. «Falta Bases 1/2/GC» siguen la misma regla estricta que ven Bases y GC (según Planning Center); «Completo» sigue la regla laxa del resto del sistema (lo autodeclarado también cuenta), así que una persona puede aparecer como «completo» y a la vez seguir en la lista de Bases o de GC si algo que declaró todavía no lo confirma Planning Center. Todas las columnas de la tabla se pueden ordenar pulsando su cabecera.
 
 ## 6. Hoja de ruta
 | Fase | Qué | Quién | Estado |

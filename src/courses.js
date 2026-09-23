@@ -8,6 +8,9 @@ const joinEs = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')}
 /** ¿Se acepta como hecho? Lo que dice Planning Center; si no hay ficha o no lo tiene, lo que declaró la persona. */
 const accepted = (a, k) => !!a['pco_' + k] || !!a['self_' + k];
 
+/** ¿Lo confirma Planning Center literalmente (sin contar lo autodeclarado)? */
+const pcoOk = (a, k) => !!a['pco_' + k];
+
 /** Cursos que la persona declaró tener y que Planning Center no confirma (aun así se aceptan). */
 const mismatches = (a) => KEYS.filter((k) => a['self_' + k] && !a['pco_' + k]);
 
@@ -17,11 +20,27 @@ const missing = (a) => KEYS.filter((k) => !accepted(a, k));
 /** Línea de texto plano «Bases 1: Sí · Bases 2: No · GC: Sí», con lo aceptado (Planning Center o autodeclarado). */
 const courseLine = (a) => KEYS.map((k) => `${LABEL[k]}: ${accepted(a, k) ? 'Sí' : 'No'}`).join(' · ');
 
-/** ¿Le toca al líder de Bases llamarla? Le falta Bases 1 o Bases 2 (con o sin GC: Bases siempre va primero). */
-const needsBases = (a) => !accepted(a, 'bases1') || !accepted(a, 'bases2');
+/**
+ * Bases 1 y/o Bases 2 que le tocan al líder de Bases: los que Planning Center no confirma todavía, aunque la
+ * persona los haya autodeclarado. Si los autodeclaró, es un «mismatch»: no le falta el paso en sí, hay que
+ * revisar y actualizar el dato en Planning Center (puede que le faltara marcar la asistencia).
+ */
+const basesGaps = (a) => KEYS.filter((k) => k !== 'gc' && !pcoOk(a, k)).map((k) => ({ key: k, label: LABEL[k], mismatch: !!a['self_' + k] }));
 
-/** ¿Le toca al líder de GC llamarla? Ya tiene Bases 1 (mínimo para ofrecerle un GC) y le falta el GC. */
-const needsGc = (a) => accepted(a, 'bases1') && !accepted(a, 'gc');
+/**
+ * El GC que le toca al líder de GC: ya tiene Bases 1 (autodeclarado cuenta, es el mínimo para ofrecerle un GC) y
+ * Planning Center no confirma el GC todavía. Si lo autodeclaró, es un «mismatch» (revisar y actualizar el dato).
+ */
+function gcGaps(a) {
+  if (!accepted(a, 'bases1') || pcoOk(a, 'gc')) return [];
+  return [{ key: 'gc', label: LABEL.gc, mismatch: !!a.self_gc }];
+}
+
+/** ¿Le toca al líder de Bases llamarla? Incluye a quien dice tener Bases 1 o Bases 2 pero Planning Center no lo confirma. */
+const needsBases = (a) => basesGaps(a).length > 0;
+
+/** ¿Le toca al líder de GC llamarla? Incluye a quien dice estar en un GC pero Planning Center no lo confirma. */
+const needsGc = (a) => gcGaps(a).length > 0;
 
 /** Recordatorio si de verdad le falta algo (independiente de si está contrastado con Planning Center o no). */
 function reminderFor(a) {
@@ -49,4 +68,4 @@ function contrastadoInfo(a) {
   return { ok: true, reason: 'ok', label: 'Sí', reminder };
 }
 
-module.exports = { LABEL, KEYS, joinEs, accepted, mismatches, missing, courseLine, needsBases, needsGc, contrastadoInfo };
+module.exports = { LABEL, KEYS, joinEs, accepted, pcoOk, mismatches, missing, courseLine, basesGaps, gcGaps, needsBases, needsGc, contrastadoInfo };

@@ -248,6 +248,47 @@ test('el líder de Bases ve solo a quien le falta Bases 1 o Bases 2 en su ciudad
   assert.ok(!(await (await req('bases', 'GET', '/api/panel/applications')).json()).some((r) => r.id === otraCiudadBases));
 });
 
+test('Bases y GC también ven a quien lo autodeclaró pero Planning Center no lo confirma, con el aviso de actualizar PCO', async () => {
+  // Dice tener Bases 1, pero Planning Center no lo confirma: le sigue tocando a Bases (mismatch, no «pendiente de verdad»)
+  const mismatchB1 = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,self_bases1,pco_bases2,pco_gc)
+    VALUES ('Dice B1','diceb1@x.es','+34 600 111 222',?,?,24,'listo','55',0,1,1,1)`).run(city, teamA).lastInsertRowid);
+  const basesRows = await (await req('bases', 'GET', '/api/panel/applications')).json();
+  const row = basesRows.find((r) => r.id === mismatchB1);
+  assert.ok(row, 'le toca a Bases aunque lo haya autodeclarado, porque PCO no lo confirma');
+  assert.deepEqual(row.basesGaps, [{ key: 'bases1', label: 'Bases 1', mismatch: true }]);
+
+  // Dice estar en un GC, pero Planning Center no lo confirma: le sigue tocando a GC
+  const mismatchGc = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,status,pco_person_id,pco_bases1,pco_bases2,pco_gc,self_gc)
+    VALUES ('Dice GC','dicegc@x.es','+34 600 111 222',?,?,24,'listo','55',1,1,0,1)`).run(city, teamA).lastInsertRowid);
+  const gcRows = await (await req('gc', 'GET', '/api/panel/applications')).json();
+  const rowGc = gcRows.find((r) => r.id === mismatchGc);
+  assert.ok(rowGc, 'le toca a GC aunque lo haya autodeclarado, porque PCO no lo confirma');
+  assert.deepEqual(rowGc.gcGaps, [{ key: 'gc', label: 'GC', mismatch: true }]);
+
+  // El líder de equipo (que ve a todos) recibe la misma información estructurada
+  const leaderRows = await (await req('leader', 'GET', '/api/panel/applications')).json();
+  assert.deepEqual(leaderRows.find((r) => r.id === mismatchB1).basesGaps, [{ key: 'bases1', label: 'Bases 1', mismatch: true }]);
+});
+
+test('filtro de categoría (falta Bases 1/2/GC, completo): filtra el panel y el CSV, para cualquier rol', async () => {
+  const c5 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Categorías')").run().lastInsertRowid);
+  const faltaB1 = apply('Cat Falta B1', teamA, { city: c5, pcoBases1: 0, pcoBases2: 1, pcoGc: 1 });
+  const faltaB2 = apply('Cat Falta B2', teamA, { city: c5, pcoBases1: 1, pcoBases2: 0, pcoGc: 1 });
+  const faltaGc = apply('Cat Falta GC', teamA, { city: c5, pcoBases1: 1, pcoBases2: 1, pcoGc: 0 });
+  const completo = apply('Cat Completo', teamA, { city: c5, pcoBases1: 1, pcoBases2: 1, pcoGc: 1 });
+
+  const byCategory = async (category) => (await (await req('admin', 'GET', `/api/panel/applications?category=${category}&q=Cat`)).json()).map((r) => r.name);
+  assert.deepEqual(await byCategory('falta_bases1'), ['Cat Falta B1']);
+  assert.deepEqual(await byCategory('falta_bases2'), ['Cat Falta B2']);
+  assert.deepEqual(await byCategory('falta_gc'), ['Cat Falta GC']);
+  assert.deepEqual(await byCategory('completo'), ['Cat Completo']);
+  assert.equal((await byCategory('')).length, 4, 'sin categoría: los cuatro');
+
+  const csv = await (await req('admin', 'GET', '/api/panel/applications.csv?category=completo&q=Cat')).text();
+  assert.match(csv, /Cat Completo/);
+  assert.doesNotMatch(csv, /Cat Falta/);
+});
+
 test('Bases y GC no pueden cambiar el estado ni borrar (solo el líder de equipo y admin); comentar sí les deja', async () => {
   const id = apply('Toca Bases', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
   assert.equal((await req('bases', 'PATCH', `/api/panel/applications/${id}`, { status: 'contactado' })).status, 403);

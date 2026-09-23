@@ -24,6 +24,27 @@ const list = (items) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left
 const section = (title, items) => (items.length ? `<h2 style="font-size:16px">${title}</h2>${list(items)}` : '');
 const italic = (t) => (t ? p(`<i>${esc(t)}</i>`) : '');
 
+/**
+ * Una persona en la lista propia del líder de Bases o de GC: sus datos y, curso a curso, lo que le falta según
+ * Planning Center — si de verdad no lo tiene, o si lo autodeclaró y Planning Center no lo confirma (hay que
+ * revisar y actualizar el dato, posiblemente le faltó marcar la asistencia).
+ */
+const roleLine = (a, gaps) => {
+  const bits = [`<b>${esc(a.name)}</b>`, `<a href="tel:${esc(a.phone)}">${esc(a.phone)}</a>`, `<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`];
+  if (a.city) bits.push(esc(a.city));
+  if (a.team) bits.push(esc(a.team));
+  if (a.pco_url) bits.push(`<a href="${esc(a.pco_url)}">Perfil</a>`);
+  let line = bits.join(' · ');
+  for (const g of gaps) {
+    line += g.mismatch
+      ? `<br><span style="color:#b45309">⚠ ${esc(g.label)}: dice tenerlo, pero no consta en Planning Center. Actualizar información en PCO contrastándola${g.key === 'gc' ? '' : '. Es posible que le haya faltado marcar la asistencia.'}</span>`
+      : `<br><span style="color:#71717a">${esc(g.label)}: no lo tiene hecho</span>`;
+  }
+  return line;
+};
+const roleList = (items, gapsKey) => `<ul style="line-height:1.8;margin:0 0 16px;padding-left:20px">${items.map((a) => `<li>${roleLine(a, a[gapsKey] || [])}</li>`).join('')}</ul>`;
+const roleSection = (title, items, gapsKey) => (items.length ? `<h2 style="font-size:16px">${title}</h2>${roleList(items, gapsKey)}` : '');
+
 /** Lista de lo que falta. Si le faltan Bases 1 y Bases 2 y comparten enlace, van en una sola línea. */
 function faltanHtml(missing) {
   if (!missing.length) return '';
@@ -76,26 +97,32 @@ function leaderDigestEmail({ team, nuevas, seguimiento, resto }) {
   });
 }
 
-/** Lista del líder de Bases: quien tenga pendiente Bases 1 o Bases 2 en su ciudad (de cualquier equipo). */
+/**
+ * Lista del líder de Bases: quien tenga pendiente Bases 1 o Bases 2 según Planning Center en su ciudad (de
+ * cualquier equipo), incluida la gente que lo autodeclaró pero Planning Center todavía no lo confirma.
+ */
 function basesDigestEmail({ city, nuevas, seguimiento, resto }) {
   return render('bases_digest', {
     vars: { ciudad: city.name },
     blocks: {
-      seccion_nuevas: section('🆕 Nuevas desde el último resumen', nuevas),
-      seccion_seguimiento: section('🔁 Toca hacer seguimiento', seguimiento),
-      seccion_resto: section('📋 Resto de tu lista', resto),
+      seccion_nuevas: roleSection('🆕 Nuevas desde el último resumen', nuevas, 'basesGaps'),
+      seccion_seguimiento: roleSection('🔁 Toca hacer seguimiento', seguimiento, 'basesGaps'),
+      seccion_resto: roleSection('📋 Resto de tu lista', resto, 'basesGaps'),
     },
   });
 }
 
-/** Lista del líder de GC: quien ya tenga Bases 1 y le falte un GC en su ciudad (de cualquier equipo). */
+/**
+ * Lista del líder de GC: quien ya tenga Bases 1 y le falte un GC según Planning Center en su ciudad (de
+ * cualquier equipo), incluida la gente que dice estar en un GC pero Planning Center todavía no lo confirma.
+ */
 function gcDigestEmail({ city, nuevas, seguimiento, resto }) {
   return render('gc_digest', {
     vars: { ciudad: city.name },
     blocks: {
-      seccion_nuevas: section('🆕 Nuevas desde el último resumen', nuevas),
-      seccion_seguimiento: section('🔁 Toca hacer seguimiento', seguimiento),
-      seccion_resto: section('📋 Resto de tu lista', resto),
+      seccion_nuevas: roleSection('🆕 Nuevas desde el último resumen', nuevas, 'gcGaps'),
+      seccion_seguimiento: roleSection('🔁 Toca hacer seguimiento', seguimiento, 'gcGaps'),
+      seccion_resto: roleSection('📋 Resto de tu lista', resto, 'gcGaps'),
     },
   });
 }

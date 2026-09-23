@@ -71,14 +71,14 @@ const TEMPLATES = {
   },
   bases_digest: {
     group: 'bases', title: 'Tu lista de Bases', to: 'Cada líder de Bases, un email por ciudad',
-    when: 'Los mismos días y horas que «Tu lista» del líder de equipo (ahora mismo: %HORARIO%). Quien tenga pendiente Bases 1 o Bases 2 en tu ciudad, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes a alguien pendiente.',
+    when: 'Los mismos días y horas que «Tu lista» del líder de equipo (ahora mismo: %HORARIO%). Quien tenga pendiente Bases 1 o Bases 2 en tu ciudad, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Incluye también a quien dice tener Bases 1 o Bases 2 pero Planning Center no lo confirma (con el aviso de actualizar el dato). Solo se envía si tienes a alguien pendiente.',
     vars: ['ciudad', 'seccion_nuevas', 'seccion_seguimiento', 'seccion_resto', 'url_panel'], flags: [], required: ['seccion_nuevas', 'seccion_seguimiento', 'seccion_resto'],
     subject: 'Tu lista de Bases · {{ciudad}}', heading: 'Bases 1 y Bases 2',
     body: `Estas personas de {{ciudad}} tienen pendiente Bases 1 o Bases 2: llámalas para invitarlas a apuntarse (hillsong.es/bases) y contarles cómo funciona.\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
   },
   gc_digest: {
     group: 'gc', title: 'Tu lista de GC', to: 'Cada líder de GC, un email por ciudad',
-    when: 'Los mismos días y horas que «Tu lista» del líder de equipo (ahora mismo: %HORARIO%). Quien ya tenga Bases 1 y le falte un Grupo de Conexión en tu ciudad, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes a alguien pendiente.',
+    when: 'Los mismos días y horas que «Tu lista» del líder de equipo (ahora mismo: %HORARIO%). Quien ya tenga Bases 1 y le falte un Grupo de Conexión en tu ciudad, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Incluye también a quien dice estar en un GC pero Planning Center no lo confirma (con el aviso de actualizar el dato). Solo se envía si tienes a alguien pendiente.',
     vars: ['ciudad', 'seccion_nuevas', 'seccion_seguimiento', 'seccion_resto', 'url_panel'], flags: [], required: ['seccion_nuevas', 'seccion_seguimiento', 'seccion_resto'],
     subject: 'Tu lista de GC · {{ciudad}}', heading: 'Grupos de Conexión (GC)',
     body: `Estas personas de {{ciudad}} ya tienen Bases 1 y les falta un Grupo de Conexión: llámalas para explicarles la importancia de los GC, qué son y cómo funcionan, e invítalas a apuntarse (hillsong.es/gc).\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
