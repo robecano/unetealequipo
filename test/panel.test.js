@@ -103,29 +103,29 @@ test('cada solicitud lleva «Contrastado con PCO»: sin ficha, con mezcla y todo
   assert.equal(byName('Todo Bien').contrastado.ok, true);
 });
 
-test('borrar: el admin puede, y el líder solo lo suyo (su equipo y su ciudad)', async () => {
+test('borrar: el admin puede, y seguimiento de Equipos dentro de su ciudad (de cualquier equipo)', async () => {
   const mine = apply('Mia Propia', teamA);
-  const ajena = apply('Otro Equipo', teamB);
+  const mismaCiudadOtroEquipo = apply('Misma Ciudad Otro Equipo', teamB);
   const otraCiudad = apply('Otra Ciudad', teamA, { city: other });
-  assert.equal((await req('leader', 'DELETE', `/api/panel/applications/${ajena}`)).status, 404);
-  assert.equal((await req('leader', 'DELETE', `/api/panel/applications/${otraCiudad}`)).status, 404);
-  assert.ok(db.prepare('SELECT 1 FROM applications WHERE id = ?').get(ajena));
+  assert.equal((await req('leader', 'DELETE', `/api/panel/applications/${otraCiudad}`)).status, 404, 'otra ciudad: no se ve');
+  assert.ok(db.prepare('SELECT 1 FROM applications WHERE id = ?').get(otraCiudad));
+  assert.equal((await req('leader', 'DELETE', `/api/panel/applications/${mismaCiudadOtroEquipo}`)).status, 200, 'misma ciudad, otro equipo: sí se ve');
   assert.equal((await req('leader', 'DELETE', `/api/panel/applications/${mine}`)).status, 200);
   assert.equal(db.prepare('SELECT 1 FROM applications WHERE id = ?').get(mine), undefined);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM application_events WHERE application_id = ?').get(mine).n, 0, 'el historial se borra en cascada');
-  assert.equal((await req('admin', 'DELETE', `/api/panel/applications/${ajena}`)).status, 200);
-  assert.equal((await req('admin', 'DELETE', `/api/panel/applications/${ajena}`)).status, 404, 'ya no existe');
+  assert.equal((await req('admin', 'DELETE', `/api/panel/applications/${otraCiudad}`)).status, 200);
+  assert.equal((await req('admin', 'DELETE', `/api/panel/applications/${otraCiudad}`)).status, 404, 'ya no existe');
   const sinSesion = await fetch(base + `/api/panel/applications/${otraCiudad}`, { method: 'DELETE' });
   assert.equal(sinSesion.status, 401);
 });
 
-test('el líder puede marcar el estado de una solicitud, pero no la de otro equipo o ciudad', async () => {
+test('seguimiento de Equipos puede marcar el estado de cualquier solicitud de su ciudad (de cualquier equipo), pero no la de otra ciudad', async () => {
   const mine = apply('Para Contactar', teamA);
-  const ajena = apply('No Es Mia', teamB);
+  const otraCiudad = apply('Otra Ciudad Estado', teamA, { city: other });
   assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${mine}`, { status: 'contactado' })).status, 200);
   assert.equal(db.prepare('SELECT status FROM applications WHERE id = ?').get(mine).status, 'contactado');
   assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${mine}`, { status: 'inventado' })).status, 400);
-  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${ajena}`, { status: 'contactado' })).status, 404);
+  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${otraCiudad}`, { status: 'contactado' })).status, 404);
 });
 
 test('CSV: cabeceras de descarga, BOM UTF-8, separador ; y columnas en español', async () => {
@@ -168,50 +168,53 @@ test('CSV: las fechas salen en hora de España y formato dd/mm/aaaa hh:mm', asyn
   assert.equal(line[line.length - 1], '15/01/2026 10:05', 'invierno: UTC+1');
 });
 
-test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el panel), y llevan «Contrastado con PCO»', async () => {
+test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el panel), y llevan «OK con PCO»', async () => {
   const id = apply('Orden Cursos', teamA, { pcoBases1: 1, pcoGc: 0, pcoBases2: 1, selfBases2: 0 });
   db.prepare('UPDATE applications SET self_bases1 = 1, self_gc = 0 WHERE id = ?').run(id);
   const [head, row] = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Orden')).text()).replace(/^﻿/, '').trim().split('\r\n');
   const h = head.split(';'); const v = row.split(';');
-  assert.deepEqual(h.slice(9, 17), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Líder de equipo']);
+  assert.deepEqual(h.slice(9, 17), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Seguimiento de Equipos']);
   assert.deepEqual(v.slice(9, 15), ['Sí', 'No', 'Sí', 'Sí', 'No', 'No']);
-  const i = h.indexOf('Contrastado con PCO');
+  const i = h.indexOf('OK con PCO');
   assert.ok(i > 0);
   assert.equal(v[i], 'Sí');
   const j = h.indexOf('Recordatorio');
-  assert.ok(j > i, 'va después de Contrastado con PCO y su motivo');
+  assert.ok(j > i, 'va después de OK con PCO y su motivo');
   assert.match(v[j], /el paso que le falta/, 'le falta GC, aunque esté contrastado');
 });
 
-test('el administrador ve el líder de equipo asignado a cada persona (y si no hay, se le avisa); el líder no', async () => {
-  const conLider = apply('Con Líder', teamA);          // teamA + city tiene a «Lía Líder»
-  const sinLider = apply('Sin Líder', teamB);          // teamB no tiene ningún líder
+test('el administrador ve quién hace seguimiento de Equipos de cada persona (y si no hay nadie en su ciudad, se le avisa); seguimiento de Equipos no ve ese dato', async () => {
+  const conLider = apply('Con Seguimiento', teamA); // ciudad Madrid: tiene a «Lía Líder»
+  const cSinLider = Number(db.prepare("INSERT INTO cities (name) VALUES ('Sin Seguimiento CSV')").run().lastInsertRowid);
+  const sinLider = apply('Sin Seguimiento', teamA, { city: cSinLider }); // ciudad nueva, sin nadie asignado
   const rows = await (await req('admin', 'GET', '/api/panel/applications')).json();
   const a = rows.find((r) => r.id === conLider), b = rows.find((r) => r.id === sinLider);
-  assert.deepEqual(a.leaders.map((l) => [l.name, l.email]), [['Lía Líder', 'lider@test.es']]);
+  // Dos personas hacen seguimiento de Equipos en Madrid (Lía y «Otro», de un test anterior): ambas ven esta solicitud, sin importar el equipo
+  assert.deepEqual(a.leaders.map((l) => [l.name, l.email]), [['Lía Líder', 'lider@test.es'], ['Otro', 'otro-lider@test.es']]);
   assert.deepEqual(b.leaders, []);
   // un líder desactivado no cuenta
-  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(leaderId);
+  const otroId = db.prepare("SELECT id FROM users WHERE email = 'otro-lider@test.es'").get().id;
+  db.prepare('UPDATE users SET active = 0 WHERE id IN (?, ?)').run(leaderId, otroId);
   assert.deepEqual((await (await req('admin', 'GET', '/api/panel/applications')).json()).find((r) => r.id === conLider).leaders, []);
-  db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(leaderId);
-  // el líder no recibe ese dato para sus propias solicitudes
+  db.prepare('UPDATE users SET active = 1 WHERE id IN (?, ?)').run(leaderId, otroId);
+  // seguimiento de Equipos no recibe ese dato para sus propias solicitudes
   const propios = await (await req('leader', 'GET', '/api/panel/applications')).json();
   assert.ok(propios.every((r) => r.leaders === undefined));
-  // CSV: columna «Líder de equipo» solo para el administrador
-  const csvAdmin = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=L%C3%ADder')).text()).replace(/^﻿/, '').trim().split('\r\n');
+  // CSV: columna «Seguimiento de Equipos» solo para administración
+  const csvAdmin = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Seguimiento')).text()).replace(/^﻿/, '').trim().split('\r\n');
   const head = csvAdmin[0].split(';');
-  const i = head.indexOf('Líder de equipo');
+  const i = head.indexOf('Seguimiento de Equipos');
   assert.ok(i > 0);
   const fila = (n) => csvAdmin.slice(1).find((l) => l.includes(n)).split(';');
-  assert.equal(fila('Con Líder')[i], 'Lía Líder · 699 000 111');
-  assert.equal(fila('Sin Líder')[i], 'Sin líder asignado');
+  assert.equal(fila('Con Seguimiento')[i], 'Lía Líder · 699 000 111 / Otro');
+  assert.equal(fila('Sin Seguimiento')[i], 'Sin seguimiento asignado');
   const csvLider = await (await req('leader', 'GET', '/api/panel/applications.csv')).text();
-  assert.doesNotMatch(csvLider.split('\r\n')[0], /Líder de equipo/);
+  assert.doesNotMatch(csvLider.split('\r\n')[0], /Seguimiento de Equipos/);
 });
 
 let basesId, gcId;
-test('el admin da de alta a un líder de Bases y a uno de GC; no se les asignan equipos aunque se manden team_ids', async () => {
-  const rb = await req('admin', 'POST', '/api/panel/admin/users', { email: 'bases@test.es', name: 'Bea Bases', role: 'bases', phone: '', city_ids: [city], team_ids: [teamA] });
+test('el admin da de alta a un líder de Bases y a uno de GC', async () => {
+  const rb = await req('admin', 'POST', '/api/panel/admin/users', { email: 'bases@test.es', name: 'Bea Bases', role: 'bases', phone: '', city_ids: [city] });
   assert.equal(rb.status, 200);
   basesId = (await rb.json()).id;
   const rg = await req('admin', 'POST', '/api/panel/admin/users', { email: 'gc@test.es', name: 'Gabi GC', role: 'gc', phone: '', city_ids: [city] });
@@ -220,7 +223,6 @@ test('el admin da de alta a un líder de Bases y a uno de GC; no se les asignan 
   const list = await (await req('admin', 'GET', '/api/panel/admin/users')).json();
   assert.equal(list.find((u) => u.email === 'bases@test.es').role, 'bases');
   assert.equal(list.find((u) => u.email === 'gc@test.es').role, 'gc');
-  assert.deepEqual(list.find((u) => u.email === 'bases@test.es').team_ids, [], 'a Bases no se le asignan equipos aunque se hayan mandado team_ids');
   await login('bases', 'bases@test.es', 'HillsongEspana');
   await login('gc', 'gc@test.es', 'HillsongEspana');
 });
@@ -299,44 +301,111 @@ test('Bases y GC no pueden cambiar el estado ni borrar (solo el líder de equipo
   assert.ok(db.prepare('SELECT 1 FROM applications WHERE id = ?').get(id), 'sigue existiendo');
 });
 
-test('Bases y GC marcan si ya han llamado; el líder de equipo lo ve, y ni él ni admin pueden marcarlo por ellos', async () => {
-  const id = apply('Marcar Llamada', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
-  assert.equal(db.prepare('SELECT bases_contacted_at FROM applications WHERE id = ?').get(id).bases_contacted_at, null);
-  const r = await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contacted: true });
+test('Bases y GC marcan que han contactado (cada pulsación añade un contacto, sin deshacer); seguimiento de Equipos lo ve, y ni él ni admin pueden marcarlo por ellos', async () => {
+  const id = apply('Marcar Contacto', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
+  const before = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
+  assert.equal(before.bases_contact_count, 0);
+  assert.equal(before.bases_last_contact, null);
+  const r = await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contact: true });
   assert.equal(r.status, 200);
-  assert.ok(db.prepare('SELECT bases_contacted_at FROM applications WHERE id = ?').get(id).bases_contacted_at);
-  // el líder de equipo (y admin) lo ven en su lista, sin haber hecho nada
-  const rowsLeader = await (await req('leader', 'GET', '/api/panel/applications')).json();
-  assert.ok(rowsLeader.find((x) => x.id === id).bases_contacted_at);
-  // ni admin ni el líder de equipo pueden marcarlo por Bases o GC
-  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { contacted: true })).status, 403);
-  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { contacted: true })).status, 403);
-  // se puede desmarcar
-  await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contacted: false });
-  assert.equal(db.prepare('SELECT bases_contacted_at FROM applications WHERE id = ?').get(id).bases_contacted_at, null);
+  // seguimiento de Equipos (y admin) lo ven en su lista, sin haber hecho nada
+  const after1 = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
+  assert.equal(after1.bases_contact_count, 1);
+  assert.ok(after1.bases_last_contact);
+  // ni admin ni seguimiento de Equipos pueden marcarlo por Bases o GC
+  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 403);
+  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 403);
+  // cada pulsación añade un contacto nuevo: no hay «deshacer»
+  await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contact: true });
+  const after2 = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
+  assert.equal(after2.bases_contact_count, 2);
 });
 
-test('CSV: columnas «Líder de Bases» y «Líder de GC», solo para admin, con «Sin líder asignado» si no hay', async () => {
+test('CSV: columnas «Seguimiento de Bases» y «Seguimiento de GC», solo para admin, con «Sin seguimiento asignado» si no hay', async () => {
   const id = apply('Con Ambos Roles', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
   const csvAdmin = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Con%20Ambos%20Roles')).text()).replace(/^﻿/, '').trim().split('\r\n');
   const head = csvAdmin[0].split(';');
-  const iBases = head.indexOf('Líder de Bases'), iGc = head.indexOf('Líder de GC');
+  const iBases = head.indexOf('Seguimiento de Bases'), iGc = head.indexOf('Seguimiento de GC');
   assert.ok(iBases > 0 && iGc > 0);
   const fila = csvAdmin[1].split(';');
   assert.equal(fila[iBases], 'Bea Bases');
   assert.equal(fila[iGc], '', 'no le toca a GC (sin Bases 1), así que va vacío');
   const csvLider = await (await req('leader', 'GET', '/api/panel/applications.csv')).text();
-  assert.doesNotMatch(csvLider.split('\r\n')[0], /Líder de Bases|Líder de GC/);
+  assert.doesNotMatch(csvLider.split('\r\n')[0], /Seguimiento de Bases|Seguimiento de GC/);
 
-  // «Le llamó Bases» / «Le llamó GC»: visibles para todos (también el líder de equipo), con la fecha si ya llamó
-  const iLlamoBases = head.indexOf('Le llamó Bases'), iLlamoGc = head.indexOf('Le llamó GC');
-  assert.ok(iLlamoBases > 0 && iLlamoGc > 0);
-  assert.equal(fila[iLlamoBases], 'No');
-  assert.equal(fila[iLlamoGc], 'No');
-  await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contacted: true });
+  // Veces contactada / último contacto: visibles para todos (también seguimiento de Equipos)
+  const iVecesBases = head.indexOf('Bases: veces contactada'), iUltimoBases = head.indexOf('Bases: último contacto');
+  assert.ok(iVecesBases > 0 && iUltimoBases > 0);
+  assert.equal(fila[iVecesBases], '0');
+  assert.equal(fila[iUltimoBases], '');
+  await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contact: true });
   const filaLuego = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Con%20Ambos%20Roles')).text()).replace(/^﻿/, '').trim().split('\r\n')[1].split(';');
-  assert.match(filaLuego[iLlamoBases], /^\d{2}\/\d{2}\/\d{4}/);
+  assert.equal(filaLuego[iVecesBases], '1');
+  assert.match(filaLuego[iUltimoBases], /^\d{2}\/\d{2}\/\d{4}/);
   const csvLiderLuego = (await (await req('leader', 'GET', '/api/panel/applications.csv?q=Con%20Ambos%20Roles')).text()).replace(/^﻿/, '').trim().split('\r\n');
   const headLider = csvLiderLuego[0].split(';');
-  assert.match(csvLiderLuego[1].split(';')[headLider.indexOf('Le llamó Bases')], /^\d{2}\/\d{2}\/\d{4}/, 'el líder de equipo también lo ve, sin la columna de líderes');
+  assert.equal(csvLiderLuego[1].split(';')[headLider.indexOf('Bases: veces contactada')], '1', 'seguimiento de Equipos también lo ve, sin la columna de seguimiento asignado');
+});
+
+let cityAdminId;
+test('admin de ciudad: ve y gestiona solo su ciudad (usuarios), y no puede tocar ciudades ni el horario global', async () => {
+  const r = await req('admin', 'POST', '/api/panel/admin/users', { email: 'cityadmin@test.es', name: 'Ana Admin', role: 'city_admin', phone: '', city_ids: [city] });
+  assert.equal(r.status, 200);
+  cityAdminId = (await r.json()).id;
+  await login('cityadmin', 'cityadmin@test.es', 'HillsongEspana');
+
+  // Ciudades: puede ver, no puede crear ni editar
+  assert.equal((await req('cityadmin', 'GET', '/api/panel/admin/cities')).status, 200);
+  assert.equal((await req('cityadmin', 'POST', '/api/panel/admin/cities', { name: 'Nueva' })).status, 403);
+  assert.equal((await req('cityadmin', 'PATCH', `/api/panel/admin/cities/${other}`, { active: false })).status, 403);
+
+  // Usuarios: solo ve los de su ciudad (nunca admin total ni otros admin de ciudad)
+  const users = await (await req('cityadmin', 'GET', '/api/panel/admin/users')).json();
+  assert.ok(users.every((u) => !['admin', 'city_admin'].includes(u.role)));
+  assert.ok(users.some((u) => u.email === 'lider@test.es'), 've a los de su ciudad');
+
+  // No puede darse (ni dar) el rol de admin de ciudad o admin total: se degrada a leader
+  const rEscalada = await req('cityadmin', 'POST', '/api/panel/admin/users', { email: 'intenta-admin@test.es', name: 'Intenta', role: 'city_admin', phone: '', city_ids: [city] });
+  assert.equal(rEscalada.status, 200);
+  assert.equal(db.prepare("SELECT role FROM users WHERE email = 'intenta-admin@test.es'").get().role, 'leader');
+
+  // Puede dar de alta a Bases/GC/Equipos, pero solo en su propia ciudad aunque mande otras
+  const rNuevoBases = await req('cityadmin', 'POST', '/api/panel/admin/users', { email: 'bases-cityadmin@test.es', name: 'Basi', role: 'bases', phone: '', city_ids: [city, other] });
+  assert.equal(rNuevoBases.status, 200);
+  const nuevoBasesId = (await rNuevoBases.json()).id;
+  assert.deepEqual(db.prepare('SELECT city_id FROM user_cities WHERE user_id = ?').all(nuevoBasesId).map((x) => x.city_id), [city], 'Valencia se descarta: no es su ciudad');
+
+  // Puede editar a alguien de su ciudad, pero no gestionar a otro admin de ciudad
+  assert.equal((await req('cityadmin', 'PUT', `/api/panel/admin/users/${leaderId}`, { name: 'Lía Líder', email: 'lider@test.es', phone: '699 000 111', active: true, city_ids: [city] })).status, 200);
+});
+
+test('admin de ciudad: en equipos solo puede cambiar su ciudad (las demás quedan igual); en emails solo ve/edita la suya; el horario es global', async () => {
+  const rCreate = await req('admin', 'POST', '/api/panel/admin/teams', { name: 'Equipo Multi Ciudad', city_ids: [city, other] });
+  assert.equal(rCreate.status, 200);
+  const teamId = (await rCreate.json()).id;
+
+  // El admin de ciudad cambia el nombre y manda city_ids vacío: solo se le quita SU ciudad, Valencia queda intacta
+  const rEdit = await req('cityadmin', 'PUT', `/api/panel/admin/teams/${teamId}`, { name: 'Equipo Multi Ciudad Editado', city_ids: [] });
+  assert.equal(rEdit.status, 200);
+  const teams = await (await req('admin', 'GET', '/api/panel/admin/teams')).json();
+  const t = teams.find((x) => x.id === teamId);
+  assert.equal(t.name, 'Equipo Multi Ciudad Editado', 'puede cambiar cualquier campo del equipo');
+  assert.deepEqual(t.city_ids, [other], 'solo se ha quitado su ciudad; Valencia sigue');
+
+  // No puede borrar un equipo que no es exclusivo de su ciudad
+  assert.equal((await req('cityadmin', 'DELETE', `/api/panel/admin/teams/${teamId}`)).status, 403, 'restringido a Valencia: no es la suya');
+  await req('admin', 'PUT', `/api/panel/admin/teams/${teamId}`, { name: 'Equipo Multi Ciudad Editado', city_ids: [city] });
+  assert.equal((await req('cityadmin', 'DELETE', `/api/panel/admin/teams/${teamId}`)).status, 200, 'ahora es exclusivo de su ciudad: sí puede');
+
+  // Emails: solo ve y edita el texto de su ciudad
+  const data = await (await req('cityadmin', 'GET', '/api/panel/admin/emails')).json();
+  assert.deepEqual(data.cities.map((c) => c.id), [city]);
+  assert.equal(data.city_id, city);
+  const goodBody = { subject: 'X {{ciudad}}', heading: 'H', body: '{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}', enabled: true };
+  assert.equal((await req('cityadmin', 'PUT', `/api/panel/admin/emails/leader_digest?city_id=${city}`, goodBody)).status, 200);
+  assert.equal((await req('cityadmin', 'PUT', `/api/panel/admin/emails/leader_digest?city_id=${other}`, goodBody)).status, 403, 'no puede editar el email de otra ciudad');
+  await req('admin', 'DELETE', `/api/panel/admin/emails/leader_digest?city_id=${city}`); // limpieza
+
+  // El horario de los resúmenes es global: solo el admin total lo cambia
+  assert.equal((await req('cityadmin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 1, hour: 9 }] })).status, 403);
 });

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL DEFAULT '',
-  role TEXT NOT NULL CHECK (role IN ('admin','leader','bases','gc')),
+  role TEXT NOT NULL CHECK (role IN ('admin','city_admin','leader','bases','gc')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   phone TEXT NOT NULL DEFAULT ''
@@ -133,7 +133,31 @@ if (!/'bases'/.test(usersSql)) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL DEFAULT '',
-      role TEXT NOT NULL CHECK (role IN ('admin','leader','bases','gc')),
+      role TEXT NOT NULL CHECK (role IN ('admin','city_admin','leader','bases','gc')),
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      phone TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO users_new SELECT * FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    COMMIT;`);
+  db.exec('PRAGMA foreign_keys = ON');
+}
+
+/**
+ * Migración: se añade el rol «city_admin» (administración de una ciudad). El CHECK no se puede ampliar con
+ * ALTER, así que se reconstruye si hace falta (bases que se quedaron en admin/leader/bases/gc). No toca datos.
+ */
+const usersSql2 = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get()?.sql || '';
+if (!/'city_admin'/.test(usersSql2)) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`BEGIN;
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL CHECK (role IN ('admin','city_admin','leader','bases','gc')),
       active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       phone TEXT NOT NULL DEFAULT ''
@@ -198,16 +222,50 @@ try { db.exec('ALTER TABLE applications ADD COLUMN gc_contacted_at TEXT'); } cat
 // El área «Domingo» (o «Operativo», si ya se había renombrado a mano en el panel) pasa a llamarse «Operativos».
 db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name IN ('Domingo', 'Operativo')");
 
-// Textos de los emails editados desde el panel. Si no hay fila, se usa el texto original del código.
+// Textos de los emails editados desde el panel, uno por ciudad. Si no hay fila para esa ciudad, se usa el texto original del código.
 db.exec(`CREATE TABLE IF NOT EXISTS email_templates (
-  key TEXT PRIMARY KEY,
+  key TEXT NOT NULL,
+  city_id INTEGER NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
   subject TEXT NOT NULL,
   heading TEXT NOT NULL,
   body TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_by TEXT NOT NULL DEFAULT ''
+  updated_by TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (key, city_id)
 )`);
+/**
+ * Migración: los emails pasan de un único texto global a uno por ciudad. Lo que ya estuviera editado se
+ * copia a todas las ciudades existentes (así cada una empieza igual que estaba, sin perder nada) y a partir
+ * de ahí cada ciudad puede divergir. No se borra ninguna personalización previa.
+ */
+const etCols = db.prepare("SELECT name FROM pragma_table_info('email_templates')").all().map((c) => c.name);
+if (etCols.length && !etCols.includes('city_id')) {
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`BEGIN;
+    CREATE TABLE email_templates_new (
+      key TEXT NOT NULL,
+      city_id INTEGER NOT NULL REFERENCES cities(id) ON DELETE CASCADE,
+      subject TEXT NOT NULL,
+      heading TEXT NOT NULL,
+      body TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_by TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (key, city_id)
+    );
+    INSERT INTO email_templates_new (key, city_id, subject, heading, body, enabled, updated_at, updated_by)
+      SELECT e.key, c.id,
+        CASE WHEN e.key = 'leader_digest' THEN REPLACE(e.subject, '{{equipo}}', '{{ciudad}}') ELSE e.subject END,
+        CASE WHEN e.key = 'leader_digest' THEN REPLACE(e.heading, '{{equipo}}', '{{ciudad}}') ELSE e.heading END,
+        CASE WHEN e.key = 'leader_digest' THEN REPLACE(e.body, '{{equipo}}', '{{ciudad}}') ELSE e.body END,
+        e.enabled, e.updated_at, e.updated_by
+      FROM email_templates e, cities c;
+    DROP TABLE email_templates;
+    ALTER TABLE email_templates_new RENAME TO email_templates;
+    COMMIT;`);
+  db.exec('PRAGMA foreign_keys = ON');
+}
 // Las plantillas retiradas (bases_assigned, gc_assigned, applicant_no_pco, applicant_missing, applicant_ready,
 // leader_notice) no se usan aunque el admin las hubiera editado antes; se limpian para no confundir en el panel.
 // bases_digest y gc_digest se reutilizan (misma idea: la lista del líder de Bases o de GC), así que no se tocan.

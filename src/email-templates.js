@@ -63,11 +63,11 @@ const TEMPLATES = {
     body: `${HELLO}\n\n{{#no_encontrado}}No hemos encontrado tu ficha en nuestro sistema, así que no hemos podido comprobar tus pasos (Bases 1, Bases 2 y GC).{{/no_encontrado}}\n\n{{#encontrado}}Esto es lo que tenemos registrado: {{cursos}}.{{/encontrado}}\n\n{{faltan}}\n\n{{contraste}}\n\nEl líder de tu equipo revisará tu solicitud y te contactará esta semana.\n\n${NOTICES}`,
   },
   leader_digest: {
-    group: 'lider', title: 'Tu lista', to: 'Cada líder, un email por equipo',
-    when: 'Los días y horas configurados abajo (ahora mismo: %HORARIO%). Toda tu lista abierta de ese equipo, en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes alguna solicitud abierta.',
-    vars: ['equipo', 'seccion_nuevas', 'seccion_seguimiento', 'seccion_resto', 'url_panel'], flags: [], required: ['seccion_nuevas', 'seccion_seguimiento', 'seccion_resto'],
-    subject: 'Tu lista · {{equipo}}', heading: 'Tu equipo',
-    body: `Esta es tu lista de **{{equipo}}**.\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
+    group: 'lider', title: 'Tu lista', to: 'Cada uno de seguimiento de Equipos, un email por ciudad',
+    when: 'Los días y horas configurados abajo (ahora mismo: %HORARIO%). Toda tu lista abierta de esa ciudad (de cualquier equipo), en tres partes: nuevas desde el último envío, a quien toca hacer seguimiento y el resto. Solo se envía si tienes alguna solicitud abierta.',
+    vars: ['ciudad', 'seccion_nuevas', 'seccion_seguimiento', 'seccion_resto', 'url_panel'], flags: [], required: ['seccion_nuevas', 'seccion_seguimiento', 'seccion_resto'],
+    subject: 'Tu lista · {{ciudad}}', heading: 'Tu ciudad',
+    body: `Esta es tu lista de **{{ciudad}}**.\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
   },
   bases_digest: {
     group: 'bases', title: 'Tu lista de Bases', to: 'Cada líder de Bases, un email por ciudad',
@@ -84,11 +84,11 @@ const TEMPLATES = {
     body: `Estas personas de {{ciudad}} ya tienen Bases 1 y les falta un Grupo de Conexión: llámalas para explicarles la importancia de los GC, qué son y cómo funcionan, e invítalas a apuntarse (hillsong.es/gc).\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
   },
   admin_no_leader: {
-    group: 'admin', title: 'Sin líder asignado', to: 'Administración',
-    when: 'En cuanto llega una solicitud a un equipo y ciudad sin ningún líder asignado. Sin este aviso, nadie se enteraría de esa solicitud hasta que se asigne un líder.',
-    vars: ['nombre_completo', 'telefono', 'equipo', 'ciudad', 'url_panel'], flags: [], required: ['nombre_completo', 'equipo', 'ciudad'],
-    subject: 'Sin líder para {{equipo}} en {{ciudad}}', heading: 'Falta un líder',
-    body: `**{{nombre_completo}}** ({{telefono}}) quiere servir en **{{equipo}}** en {{ciudad}} y no hay ningún líder asignado.\n\nAsigna un líder de equipo para que pueda contactar con esta persona.\n\n${FOOT}`,
+    group: 'admin', title: 'Sin seguimiento de Equipos asignado', to: 'Administración',
+    when: 'En cuanto llega una solicitud a una ciudad sin nadie de seguimiento de Equipos asignado. Sin este aviso, nadie se enteraría de esa solicitud hasta que se asigne a alguien.',
+    vars: ['nombre_completo', 'telefono', 'equipo', 'ciudad', 'url_panel'], flags: [], required: ['nombre_completo', 'ciudad'],
+    subject: 'Sin seguimiento de Equipos en {{ciudad}}', heading: 'Falta seguimiento de Equipos',
+    body: `**{{nombre_completo}}** ({{telefono}}) quiere servir en **{{equipo}}** en {{ciudad}} y no hay nadie de seguimiento de Equipos asignado en esa ciudad.\n\nAsigna a alguien de seguimiento de Equipos para que pueda contactar con esta persona.\n\n${FOOT}`,
   },
   admin_no_role_leader: {
     group: 'admin', title: 'Sin líder de Bases o de GC asignado', to: 'Administración',
@@ -98,13 +98,14 @@ const TEMPLATES = {
     body: `**{{nombre_completo}}** ({{telefono}}) del equipo **{{equipo}}** en {{ciudad}} necesita que le llame un líder de **{{tipo}}**, y no hay ninguno asignado en esa ciudad.\n\nAsigna un líder de {{tipo}} para que pueda contactar con esta persona.\n\n${FOOT}`,
   },
 };
-const GROUPS = { persona: 'A la persona que se apunta', lider: 'Al líder del equipo', bases: 'Al líder de Bases', gc: 'Al líder de GC', admin: 'A la administración' };
+const GROUPS = { persona: 'A la persona que se apunta', lider: 'A seguimiento de Equipos', bases: 'A seguimiento de Bases', gc: 'A seguimiento de GC', admin: 'A la administración' };
 
 // ---------- Lectura y validación ----------
-function getTemplate(key) {
+/** El texto de cada email es uno por ciudad. Sin fila para esa ciudad, se usa el original del código. */
+function getTemplate(key, cityId) {
   const base = TEMPLATES[key];
   if (!base) throw new Error(`Plantilla desconocida: ${key}`);
-  const row = db.prepare('SELECT * FROM email_templates WHERE key = ?').get(key);
+  const row = cityId ? db.prepare('SELECT * FROM email_templates WHERE key = ? AND city_id = ?').get(key, cityId) : null;
   return row ? { ...base, subject: row.subject, heading: row.heading, body: row.body, enabled: !!row.enabled, customized: true, updated_at: row.updated_at, updated_by: row.updated_by } : { ...base, enabled: true, customized: false };
 }
 
@@ -197,9 +198,9 @@ function htmlToText(html) {
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** Genera el email de una plantilla. `override` permite previsualizar un texto sin guardarlo. */
-function render(key, ctx, override) {
-  const t = { ...getTemplate(key), ...(override || {}) };
+/** Genera el email de una plantilla, con el texto de `cityId` (o el original si esa ciudad no lo ha personalizado). `override` permite previsualizar un texto sin guardarlo. */
+function render(key, ctx, override, cityId) {
+  const t = { ...getTemplate(key, cityId), ...(override || {}) };
   const vars = { url_panel: `${config.appUrl}/panel`, enlace_bases: config.urls.bases, enlace_gc: config.urls.gc, ...(ctx.vars || {}) };
   const html = layout(plain(t.heading, vars), bodyToHtml(t.body, { ...ctx, vars }));
   return { subject: plain(t.subject, vars), html, text: htmlToText(html), enabled: t.enabled !== false };
@@ -213,7 +214,7 @@ function sampleContext(key) {
   const persona2 = { ...person, name: 'Luis Pérez', phone: '+34 611 222 333', email: 'luis@ejemplo.es', cursos: 'Bases 1: Sí · Bases 2: Sí · GC: Sí', contrastado: contrastadoOk };
   const line = (a) => {
     let l = `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a> · ${esc(a.city)} · <a href="${esc(a.pco_url)}">Perfil</a>`;
-    if (a.cursos) l += `<br><span style="color:#71717a">${esc(a.cursos)} · Contrastado con PCO: ${esc(a.contrastado.label)}</span>`;
+    if (a.cursos) l += `<br><span style="color:#71717a">${esc(a.cursos)} · OK con PCO: ${esc(a.contrastado.label)}</span>`;
     if (!a.contrastado.ok) l += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
     if (a.contrastado.reminder) l += `<br><span style="color:#b45309">${esc(a.contrastado.reminder)}</span>`;
     return l;

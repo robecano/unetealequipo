@@ -58,7 +58,11 @@ function loadUser(req, _res, next) {
   const payload = unsign(parseCookies(req.headers.cookie)[COOKIE]);
   if (payload) {
     const user = db.prepare('SELECT id, email, name, role, active FROM users WHERE id = ?').get(payload.uid);
-    if (user && user.active) req.user = user;
+    if (user && user.active) {
+      // Ciudades donde actúa (vacío para el admin total, que no está restringido a ninguna).
+      user.city_ids = db.prepare('SELECT city_id FROM user_cities WHERE user_id = ?').all(user.id).map((r) => r.city_id);
+      req.user = user;
+    }
   }
   next();
 }
@@ -68,6 +72,14 @@ const requireAdmin = (req, res, next) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Solo para administradores' });
   next();
 };
+/** Administración total o de ciudad (lo que cada una pueda hacer se afina dentro de cada ruta). */
+const requireAdminLike = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Sesión no iniciada' });
+  if (!['admin', 'city_admin'].includes(req.user.role)) return res.status(403).json({ error: 'Solo para administración' });
+  next();
+};
+/** Solo el administrador total: ciudades, horario de los resúmenes, y dar de alta a otros administradores. */
+const requireSuperAdmin = requireAdmin;
 
 // ---------- Límite de intentos (login y formulario) ----------
 function limiter(max, windowMs) {
@@ -88,4 +100,4 @@ function limiter(max, windowMs) {
   };
 }
 
-module.exports = { checkPassword, setSessionCookie, clearSessionCookie, loadUser, requireAuth, requireAdmin, limiter };
+module.exports = { checkPassword, setSessionCookie, clearSessionCookie, loadUser, requireAuth, requireAdmin, requireAdminLike, requireSuperAdmin, limiter };

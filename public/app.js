@@ -19,6 +19,9 @@ const plural = (n) => `${n} equipo${n === 1 ? '' : 's'}`;
 const availableIn = (team, cityId) => !cityId || !team.city_ids.length || team.city_ids.includes(cityId);
 /** Áreas con solo los equipos disponibles en cityId (o todos, si no se ha elegido ciudad); sin áreas vacías. */
 const areasFor = (cityId) => data.areas.map((a) => ({ ...a, teams: a.teams.filter((t) => availableIn(t, cityId)) })).filter((a) => a.teams.length);
+const joinEs = (a) => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} y ${a.at(-1)}`);
+/** «Solo en Madrid y Barcelona» si el equipo está restringido a alguna ciudad; vacío si está disponible en todas. */
+const cityNote = (team) => (team.city_ids.length ? `Disponible solo en ${joinEs(team.city_ids.map((id) => data.cities.find((c) => c.id === id)?.name).filter(Boolean))}` : '');
 
 /** Tarjeta cuadrada de un área: foto (o degradado con emoji), nombre, descripción y nº de equipos. */
 function areaCard(area, i) {
@@ -46,8 +49,9 @@ function renderAreas() {
 function openArea(area) {
   const join = (team) => { $('#dlg').close(); goToForm(team.id); };
   const sub = (team) => h('details', { class: 'sub', open: area.teams.length === 1 },
-    h('summary', {}, h('span', {}, team.name), team.notice ? h('span', { class: 'tag' }, 'Requisitos') : null),
+    h('summary', {}, h('span', {}, team.name), team.city_ids.length ? h('span', { class: 'tag' }, '📍 ' + joinEs(team.city_ids.map((id) => data.cities.find((c) => c.id === id)?.name).filter(Boolean))) : null, team.notice ? h('span', { class: 'tag' }, 'Requisitos') : null),
     h('div', { class: 'sub-body' },
+      team.city_ids.length ? h('p', { class: 'info' }, cityNote(team)) : null,
       h('p', {}, team.description),
       team.notice ? h('p', { class: 'alert' }, team.notice) : null,
       h('button', { class: 'btn btn-sm', type: 'button', onclick: () => join(team) }, 'Quiero unirme')));

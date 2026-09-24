@@ -21,13 +21,7 @@ function fullApp(id) {
     .get(id);
 }
 
-const leadersFor = (teamId, cityId) =>
-  db.prepare(`SELECT u.* FROM users u
-              JOIN leader_teams lt ON lt.user_id = u.id AND lt.team_id = ?
-              JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
-              WHERE u.role = 'leader' AND u.active = 1`).all(teamId, cityId);
-
-/** Líder de Bases o de GC (role: 'bases' | 'gc') de una ciudad: uno por ciudad, no por equipo. */
+/** Seguimiento de Equipos, de Bases o de GC (role: 'leader' | 'bases' | 'gc') de una ciudad: por ciudad, no por equipo. */
 const roleLeadersFor = (role, cityId) =>
   db.prepare(`SELECT u.* FROM users u
               JOIN user_cities uc ON uc.user_id = u.id AND uc.city_id = ?
@@ -78,22 +72,22 @@ function createFlow({ pco, mail }) {
   }
 
   /**
-   * Los líderes ya no reciben un email por cada solicitud: la ven en su lista programada (sendDigests) y en el
-   * panel en todo momento. Si su equipo y ciudad no tienen ningún líder asignado, se avisa a administración
-   * para que lo asigne (si no, nadie se enteraría de esa solicitud hasta que alguien mire el panel).
+   * Nadie recibe un email por cada solicitud: se ve en la lista programada (sendDigests) y en el panel en todo
+   * momento. Si la ciudad no tiene a nadie de seguimiento de equipos asignado, se avisa a administración para
+   * que lo asigne (si no, nadie se enteraría de esa solicitud hasta que alguien mire el panel).
    */
   async function alertIfNoLeader(id) {
     const a = fullApp(id);
-    if (leadersFor(a.team_id, a.city_id).length) return;
-    const msg = emails.adminNoLeaderEmail({ app: forTemplate(a) });
-    return safeMail(id, `aviso admin: sin líder para ${a.team_name} en ${a.city}`, msg, config.adminNotifyEmail);
+    if (roleLeadersFor('leader', a.city_id).length) return;
+    const msg = emails.adminNoLeaderEmail({ app: forTemplate(a) }, a.city_id);
+    return safeMail(id, `aviso admin: sin seguimiento de equipos en ${a.city}`, msg, config.adminNotifyEmail);
   }
 
-  /** Igual que alertIfNoLeader, pero para el líder de Bases o de GC de la ciudad, solo si de verdad le toca. */
+  /** Igual que alertIfNoLeader, pero para el de Bases o de GC de la ciudad, solo si de verdad le toca. */
   async function alertIfNoRoleLeader(id, role, tipo, needsIt) {
     const a = fullApp(id);
     if (!needsIt(a) || roleLeadersFor(role, a.city_id).length) return;
-    const msg = emails.adminNoRoleLeaderEmail({ app: forTemplate(a), tipo });
+    const msg = emails.adminNoRoleLeaderEmail({ app: forTemplate(a), tipo }, a.city_id);
     return safeMail(id, `aviso admin: sin líder de ${tipo} en ${a.city}`, msg, config.adminNotifyEmail);
   }
 
@@ -109,7 +103,7 @@ function createFlow({ pco, mail }) {
     if (a.tenure_months < a.min_months) {
       setStatus('no_apto_aun');
       logEvent(id, null, 'no_apto_aun', `Antigüedad ${a.tenure_months} m < ${a.min_months} m`);
-      await safeMail(id, 'aviso a la persona (antigüedad)', emails.applicantEmail({ app: a, team, missing: [], tenureShort: true }), a.email);
+      await safeMail(id, 'aviso a la persona (antigüedad)', emails.applicantEmail({ app: a, team, missing: [], tenureShort: true }, a.city_id), a.email);
       return 'no_apto_aun';
     }
 
@@ -139,7 +133,7 @@ function createFlow({ pco, mail }) {
     logEvent(id, null, 'pco_match', `${person ? `Persona ${person.id}` : 'Sin ficha en Planning Center: se trata como si no tuviera nada'} · faltan: ${missing.map((k) => courses.LABEL[k]).join(', ') || 'nada'}${mismatched.length ? ` · declarado sin constar en PCO: ${mismatched.map((k) => courses.LABEL[k]).join(', ')}` : ''}`);
 
     await writeNotes(id);
-    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, mismatched, notFoundInPco: !person }), a.email);
+    await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, mismatched, notFoundInPco: !person }, after.city_id), a.email);
     await alertIfNoLeader(id);
     await alertIfNoRoleLeader(id, 'bases', 'Bases', courses.needsBases);
     await alertIfNoRoleLeader(id, 'gc', 'GC', courses.needsGc);
@@ -205,28 +199,18 @@ function createFlow({ pco, mail }) {
   }
 
   /**
-   * Resumen a cada líder (de equipo, de Bases y de GC), con su lista abierta: nuevas desde el último resumen, a
-   * quien toca hacer seguimiento y el resto. El de equipo va por equipo (ve a todos, tengan o no cursos hechos);
-   * los de Bases y GC van por ciudad, con quien de verdad les toca (courses.needsBases / courses.needsGc).
-   * Se envía a la hora y los días configurados (por defecto domingo y jueves).
+   * Resumen a cada uno de seguimiento (de Equipos, de Bases y de GC), por ciudad, con su lista abierta: nuevas
+   * desde el último resumen, a quien toca hacer seguimiento y el resto. El de Equipos ve a todos los de su
+   * ciudad (tengan o no cursos hechos); los de Bases y GC, solo a quien de verdad les toca (courses.needsBases /
+   * courses.needsGc). Se envía a la hora y los días configurados (por defecto domingo y jueves).
    */
   async function sendDigests() {
     let sent = 0;
     const prevRun = getSetting('digest_prev_run'); // marca de antes de esta tanda: lo posterior es «nuevo»
     await refreshCourses();
 
-    for (const l of db.prepare("SELECT * FROM users WHERE role='leader' AND active=1").all()) {
-      const myTeams = db.prepare(`SELECT t.id, ${TEAM_LABEL} AS name FROM teams t LEFT JOIN teams p ON p.id = t.parent_id JOIN leader_teams lt ON lt.team_id = t.id WHERE lt.user_id = ?`).all(l.id);
-      const rows = openAppsIn(l.id);
-      for (const team of myTeams) {
-        const mine = rows.filter((r) => r.team_id === team.id);
-        if (!mine.length) continue;
-        const msg = emails.leaderDigestEmail({ team, ...partition(mine, prevRun) });
-        if (await sendDigest(msg, l.email)) sent++;
-      }
-    }
-
     for (const [role, needsIt, buildEmail] of [
+      ['leader', () => true, emails.leaderDigestEmail],
       ['bases', courses.needsBases, emails.basesDigestEmail],
       ['gc', courses.needsGc, emails.gcDigestEmail],
     ]) {
@@ -235,7 +219,7 @@ function createFlow({ pco, mail }) {
         for (const city of db.prepare('SELECT c.* FROM cities c JOIN user_cities uc ON uc.city_id = c.id WHERE uc.user_id = ?').all(l.id)) {
           const mine = rows.filter((r) => r.city_id === city.id);
           if (!mine.length) continue;
-          const msg = buildEmail({ city, ...partition(mine, prevRun) });
+          const msg = buildEmail({ city, ...partition(mine, prevRun) }, city.id);
           if (await sendDigest(msg, l.email)) sent++;
         }
       }

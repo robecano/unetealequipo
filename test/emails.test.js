@@ -57,20 +57,20 @@ test('tiempo mínimo insuficiente: no se avisa al líder, y el asunto/tono es di
   assert.match(m.html, /entrevista previa/);
 });
 
-test('resumen del líder: nuevas, seguimiento y resto solo aparecen si hay alguien, con los cursos y el contraste con PCO de cada uno', () => {
-  const vacio = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [], seguimiento: [], resto: [] });
+test('resumen de seguimiento de Equipos: nuevas, seguimiento y resto solo aparecen si hay alguien, con los cursos y OK con PCO de cada uno', () => {
+  const vacio = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [], seguimiento: [], resto: [] });
   assert.doesNotMatch(vacio.html, /Nuevas desde el último resumen|Toca hacer seguimiento|Resto de tu lista/);
-  const lleno = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [{ ...person, name: 'Otra', contrastado: contrastadoOk }] });
+  const lleno = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [{ ...person, name: 'Otra', contrastado: contrastadoOk }] });
   assert.match(lleno.html, /Nuevas desde el último resumen/);
   assert.doesNotMatch(lleno.html, /Toca hacer seguimiento/);
   assert.match(lleno.html, /Resto de tu lista/);
   assert.match(lleno.html, /Ana &lt;b&gt;Ruiz&lt;\/b&gt;/);
   assert.match(lleno.html, /Bases 1: Sí · Bases 2: No · GC: Sí/);
-  assert.match(lleno.html, /Contrastado con PCO: No/);
+  assert.match(lleno.html, /OK con PCO: No/);
   assert.match(lleno.html, /Contacta con el equipo de PCO de tu campus/);
   assert.match(lleno.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
   assert.match(lleno.html, /Otra/);
-  assert.match(lleno.html, /Contrastado con PCO: Sí/);
+  assert.match(lleno.html, /OK con PCO: Sí/);
 });
 
 test('lista del líder de Bases y del líder de GC: mismo formato que la del líder de equipo, con la ciudad en el asunto', () => {
@@ -89,19 +89,19 @@ test('lista del líder de Bases y del líder de GC: mismo formato que la del lí
 
 test('el recordatorio aparece aunque esté contrastado, si de verdad le falta algo', () => {
   const contrastadoOkConFalta = { ok: true, label: 'Sí', reminder: 'Recuerda que es importante que haga el paso que le falta antes de empezar a servir.' };
-  const m = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [{ ...person, contrastado: contrastadoOkConFalta }], seguimiento: [], resto: [] });
-  assert.match(m.html, /Contrastado con PCO: Sí/);
+  const m = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [{ ...person, contrastado: contrastadoOkConFalta }], seguimiento: [], resto: [] });
+  assert.match(m.html, /OK con PCO: Sí/);
   assert.doesNotMatch(m.html, /⚠/, 'sin aviso de contraste: solo el recordatorio');
   assert.match(m.html, /Recuerda que es importante que haga el paso que le falta antes de empezar a servir/);
 });
 
 test('el texto del usuario se escapa: no se puede inyectar HTML ni scripts', () => {
-  const m = emails.leaderDigestEmail({ team: { name: '<img src=x onerror=alert(1)>' }, nuevas: [{ ...person, name: '<script>alert(1)</script>' }], seguimiento: [], resto: [] });
+  const m = emails.leaderDigestEmail({ city: { name: '<img src=x onerror=alert(1)>' }, nuevas: [{ ...person, name: '<script>alert(1)</script>' }], seguimiento: [], resto: [] });
   assert.doesNotMatch(m.html, /<script>/);
   assert.doesNotMatch(m.html, /<img src=x/);
   assert.match(m.html, /&lt;script&gt;/);
   // lo que escribe el admin en el cuerpo también se escapa
-  const r = et.render('leader_digest', { vars: { equipo: 'X' }, blocks: { seccion_nuevas: 'x', seccion_seguimiento: 'x', seccion_resto: 'x' } }, { subject: 's', heading: 'h', body: 'Hola <script>x()</script> **negrita** _cursiva_ [web](https://ejemplo.es) https://otra.es\n\n{{seccion_nuevas}}' });
+  const r = et.render('leader_digest', { vars: { ciudad: 'X' }, blocks: { seccion_nuevas: 'x', seccion_seguimiento: 'x', seccion_resto: 'x' } }, { subject: 's', heading: 'h', body: 'Hola <script>x()</script> **negrita** _cursiva_ [web](https://ejemplo.es) https://otra.es\n\n{{seccion_nuevas}}' });
   assert.doesNotMatch(r.html, /<script>/);
   assert.match(r.html, /<b>negrita<\/b>/);
   assert.match(r.html, /<i>cursiva<\/i>/);
@@ -121,7 +121,7 @@ test('condicionales y botones', () => {
 });
 
 test('validación: marcadores desconocidos, imprescindibles, bloques y condicionales', () => {
-  const ok = { subject: 'Hola {{equipo}}', heading: 'T', body: 'Nuevas:\n\n{{seccion_nuevas}}\n\nSeguimiento:\n\n{{seccion_seguimiento}}\n\nResto:\n\n{{seccion_resto}}\n\n{{url_panel}}' };
+  const ok = { subject: 'Hola {{ciudad}}', heading: 'T', body: 'Nuevas:\n\n{{seccion_nuevas}}\n\nSeguimiento:\n\n{{seccion_seguimiento}}\n\nResto:\n\n{{seccion_resto}}\n\n{{url_panel}}' };
   assert.deepEqual(et.validate('leader_digest', ok), []);
   assert.match(et.validate('leader_digest', { ...ok, body: 'Sin las secciones' }).join(' '), /Falta \{\{seccion_nuevas\}\}/);
   assert.match(et.validate('leader_digest', { ...ok, body: ok.body + '\n\n{{inventado}}' }).join(' '), /\{\{inventado\}\} no existe/);
@@ -134,7 +134,7 @@ test('validación: marcadores desconocidos, imprescindibles, bloques y condicion
   for (const [key, t] of Object.entries(et.TEMPLATES)) assert.deepEqual(et.validate(key, t), [], `original de ${key}`);
 });
 
-let server, base;
+let server, base, cityId;
 const cookies = {};
 const J = { 'Content-Type': 'application/json' };
 const req = (who, method, url, body) => fetch(base + url, { method, headers: { ...J, ...(cookies[who] ? { Cookie: cookies[who] } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -143,92 +143,95 @@ test.before(async () => {
   server = app.listen(0);
   base = `http://127.0.0.1:${server.address().port}`;
   await login('admin', 'admin@test.es', 'admin-pass');
-  const city = Number(db.prepare("INSERT INTO cities (name) VALUES ('Madrid')").run().lastInsertRowid);
+  cityId = Number(db.prepare("INSERT INTO cities (name) VALUES ('Madrid')").run().lastInsertRowid);
   const id = Number(db.prepare("INSERT INTO users (email, role) VALUES ('lider@test.es', 'leader')").run().lastInsertRowid);
-  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(id, city);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(id, cityId);
   await login('leader', 'lider@test.es', 'HillsongEspana');
 });
 test.after(() => server.close());
 
-test('solo el administrador ve y edita los emails', async () => {
+test('solo administración (total o de ciudad) ve y edita los emails', async () => {
   assert.equal((await req('leader', 'GET', '/api/panel/admin/emails')).status, 403);
-  assert.equal((await req('leader', 'PUT', '/api/panel/admin/emails/leader_digest', {})).status, 403);
+  assert.equal((await req('leader', 'PUT', `/api/panel/admin/emails/leader_digest?city_id=${cityId}`, {})).status, 403);
   assert.equal((await req('leader', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 2, hour: 9 }] })).status, 403);
   assert.equal((await fetch(base + '/api/panel/admin/emails')).status, 401);
   const data = await (await req('admin', 'GET', '/api/panel/admin/emails')).json();
   assert.equal(data.templates.length, Object.keys(et.TEMPLATES).length);
   assert.deepEqual(Object.keys(data.groups), ['persona', 'lider', 'bases', 'gc', 'admin']);
+  assert.equal(data.city_id, cityId, 'única ciudad que existe: se elige por defecto');
 });
 
-test('guardar un email: se valida, se usa al enviar y se puede restaurar', async () => {
-  const good = { subject: 'AVISO {{equipo}}', heading: 'Nuevo título', body: 'Tu lista:\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\nGracias.', enabled: true };
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/leader_digest', { ...good, body: 'sin las secciones' })).status, 400);
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/no_existe', good)).status, 404);
-  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/leader_digest', good)).json();
+test('guardar un email: se valida, se usa al enviar y se puede restaurar (un texto por ciudad)', async () => {
+  const good = { subject: 'AVISO {{ciudad}}', heading: 'Nuevo título', body: 'Tu lista:\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\nGracias.', enabled: true };
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/emails/leader_digest?city_id=${cityId}`, { ...good, body: 'sin las secciones' })).status, 400);
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/emails/no_existe?city_id=${cityId}`, good)).status, 404);
+  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/leader_digest', good)).status, 400, 'sin city_id no se sabe qué ciudad editar');
+  const saved = await (await req('admin', 'PUT', `/api/panel/admin/emails/leader_digest?city_id=${cityId}`, good)).json();
   assert.equal(saved.customized, true);
   assert.equal(saved.updated_by, 'admin@test.es');
-  const m = emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [] });
-  assert.equal(m.subject, 'AVISO Cafetería');
+  const m = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [] }, cityId);
+  assert.equal(m.subject, 'AVISO Madrid');
   assert.match(m.html, /Nuevo título/);
   assert.match(m.html, /Tu lista/);
+  // sin cityId (u otra ciudad) sigue con el texto original
+  assert.match(emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [] }).subject, /^Tu lista/);
   // restaurar
-  const back = await (await req('admin', 'DELETE', '/api/panel/admin/emails/leader_digest')).json();
+  const back = await (await req('admin', 'DELETE', `/api/panel/admin/emails/leader_digest?city_id=${cityId}`)).json();
   assert.equal(back.customized, false);
-  assert.match(emails.leaderDigestEmail({ team: { name: 'Cafetería' }, nuevas: [person], seguimiento: [], resto: [] }).subject, /^Tu lista/);
+  assert.match(emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [] }, cityId).subject, /^Tu lista/);
 });
 
-test('el aviso a administración de «sin líder» también es editable', async () => {
+test('el aviso a administración de «sin seguimiento de Equipos» también es editable', async () => {
   const app = { name: 'Ana Ruiz', phone: '+34 600 111 222', team: 'Cafetería', city: 'Madrid' };
-  const original = emails.adminNoLeaderEmail({ app });
-  assert.match(original.subject, /^Sin líder para/);
+  const original = emails.adminNoLeaderEmail({ app }, cityId);
+  assert.match(original.subject, /^Sin seguimiento de Equipos/);
   assert.match(original.html, /Ana Ruiz/);
   assert.match(original.html, /600 111 222/);
 
-  const good = { subject: 'FALTA LÍDER: {{equipo}}', heading: 'Ojo', body: 'Nadie puede atender a {{nombre_completo}} ({{telefono}}) en {{equipo}}, {{ciudad}}.', enabled: true };
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_leader', { ...good, body: 'sin el nombre ni el equipo' })).status, 400);
-  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_leader', good)).json();
+  const good = { subject: 'FALTA SEGUIMIENTO: {{ciudad}}', heading: 'Ojo', body: 'Nadie puede atender a {{nombre_completo}} ({{telefono}}) en {{equipo}}, {{ciudad}}.', enabled: true };
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_leader?city_id=${cityId}`, { ...good, body: 'sin el nombre ni la ciudad' })).status, 400);
+  const saved = await (await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_leader?city_id=${cityId}`, good)).json();
   assert.equal(saved.customized, true);
-  const edited = emails.adminNoLeaderEmail({ app });
-  assert.equal(edited.subject, 'FALTA LÍDER: Cafetería');
+  const edited = emails.adminNoLeaderEmail({ app }, cityId);
+  assert.equal(edited.subject, 'FALTA SEGUIMIENTO: Madrid');
   assert.match(edited.html, /Nadie puede atender a Ana Ruiz/);
 
-  await req('admin', 'DELETE', '/api/panel/admin/emails/admin_no_leader');
+  await req('admin', 'DELETE', `/api/panel/admin/emails/admin_no_leader?city_id=${cityId}`);
 });
 
 test('el aviso a administración de «sin líder de Bases o de GC» también es editable', async () => {
   const app = { name: 'Ana Ruiz', phone: '+34 600 111 222', team: 'Cafetería', city: 'Madrid' };
-  const original = emails.adminNoRoleLeaderEmail({ app, tipo: 'Bases' });
+  const original = emails.adminNoRoleLeaderEmail({ app, tipo: 'Bases' }, cityId);
   assert.equal(original.subject, 'Sin líder de Bases en Madrid');
   assert.match(original.html, /Ana Ruiz/);
   assert.match(original.html, /Cafetería/);
 
   const good = { subject: 'FALTA {{tipo}}: {{ciudad}}', heading: 'Ojo', body: 'Nadie de {{tipo}} puede atender a {{nombre_completo}} en {{ciudad}}.', enabled: true };
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_role_leader', { ...good, body: 'sin el nombre ni la ciudad' })).status, 400);
-  const saved = await (await req('admin', 'PUT', '/api/panel/admin/emails/admin_no_role_leader', good)).json();
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_role_leader?city_id=${cityId}`, { ...good, body: 'sin el nombre ni la ciudad' })).status, 400);
+  const saved = await (await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_role_leader?city_id=${cityId}`, good)).json();
   assert.equal(saved.customized, true);
-  const edited = emails.adminNoRoleLeaderEmail({ app, tipo: 'GC' });
+  const edited = emails.adminNoRoleLeaderEmail({ app, tipo: 'GC' }, cityId);
   assert.equal(edited.subject, 'FALTA GC: Madrid');
   assert.match(edited.html, /Nadie de GC puede atender a Ana Ruiz/);
 
-  await req('admin', 'DELETE', '/api/panel/admin/emails/admin_no_role_leader');
+  await req('admin', 'DELETE', `/api/panel/admin/emails/admin_no_role_leader?city_id=${cityId}`);
 });
 
 test('un email desactivado no se envía, y queda anotado', async () => {
-  await req('admin', 'PUT', '/api/panel/admin/emails/applicant_received', { ...et.TEMPLATES.applicant_received, enabled: false });
+  await req('admin', 'PUT', `/api/panel/admin/emails/applicant_received?city_id=${cityId}`, { ...et.TEMPLATES.applicant_received, enabled: false });
   const sent = [];
   const flow = createFlow({ pco: { findPerson: async () => ({ id: '1' }), getCourseStatus: async () => ({ bases1: true, bases2: true, gc: true }), addNote: async () => {} }, mail: { sendMail: async (m) => sent.push(m) } });
-  const city = db.prepare('SELECT id FROM cities LIMIT 1').get().id;
   const team = Number(db.prepare("INSERT INTO teams (name) VALUES ('T')").run().lastInsertRowid);
-  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana','ana@x.es','600111222',?,?,24)`).run(city, team).lastInsertRowid);
+  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana','ana@x.es','600111222',?,?,24)`).run(cityId, team).lastInsertRowid);
   await flow.process(id);
   assert.equal(sent.filter((m) => [].concat(m.to).includes('ana@x.es')).length, 0);
   assert.ok(db.prepare("SELECT 1 FROM application_events WHERE application_id = ? AND event = 'email_desactivado'").get(id));
-  await req('admin', 'DELETE', '/api/panel/admin/emails/applicant_received');
+  await req('admin', 'DELETE', `/api/panel/admin/emails/applicant_received?city_id=${cityId}`);
 });
 
 test('vista previa: documento propio con su CSP, embebible solo desde la misma web, y sin ejecutar HTML del admin', async () => {
   const body = new URLSearchParams({ subject: 'Asunto <b>x</b>', heading: 'T', body: 'Hola {{nombre}} <script>alert(1)</script>' });
-  const r = await fetch(base + '/api/panel/admin/emails/applicant_received/preview', { method: 'POST', headers: { Cookie: cookies.admin, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const r = await fetch(base + `/api/panel/admin/emails/applicant_received/preview?city_id=${cityId}`, { method: 'POST', headers: { Cookie: cookies.admin, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   assert.equal(r.status, 200);
   assert.match(r.headers.get('content-security-policy'), /default-src 'none'/);
   assert.match(r.headers.get('content-security-policy'), /frame-ancestors 'self'/);
@@ -237,19 +240,19 @@ test('vista previa: documento propio con su CSP, embebible solo desde la misma w
   assert.match(html, /Hola Ana/);
   assert.doesNotMatch(html, /<script>alert/);
   assert.match(html, /Asunto:<\/b> Asunto &lt;b&gt;x&lt;\/b&gt;/);
-  const noAdmin = await fetch(base + '/api/panel/admin/emails/applicant_received/preview', { method: 'POST', headers: { Cookie: cookies.leader, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const noAdmin = await fetch(base + `/api/panel/admin/emails/applicant_received/preview?city_id=${cityId}`, { method: 'POST', headers: { Cookie: cookies.leader, 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   assert.equal(noAdmin.status, 403);
-  const malo = await fetch(base + '/api/panel/admin/emails/leader_digest/preview', { method: 'POST', headers: { Cookie: cookies.admin, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ subject: 's', heading: 'h', body: 'sin las secciones' }) });
+  const malo = await fetch(base + `/api/panel/admin/emails/leader_digest/preview?city_id=${cityId}`, { method: 'POST', headers: { Cookie: cookies.admin, 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ subject: 's', heading: 'h', body: 'sin las secciones' }) });
   assert.match(await malo.text(), /No se puede previsualizar/);
 });
 
 test('email de prueba: solo al propio administrador y sin SMTP no envía nada', async () => {
-  const r = await req('admin', 'POST', '/api/panel/admin/emails/leader_digest/test', { ...et.TEMPLATES.leader_digest });
+  const r = await req('admin', 'POST', `/api/panel/admin/emails/leader_digest/test?city_id=${cityId}`, { ...et.TEMPLATES.leader_digest });
   assert.equal(r.status, 200);
   const out = await r.json();
   assert.equal(out.to, 'admin@test.es');
   assert.equal(out.sent, false);
-  assert.equal((await req('admin', 'POST', '/api/panel/admin/emails/leader_digest/test', { subject: 's', heading: 'h', body: 'sin secciones' })).status, 400);
+  assert.equal((await req('admin', 'POST', `/api/panel/admin/emails/leader_digest/test?city_id=${cityId}`, { subject: 's', heading: 'h', body: 'sin secciones' })).status, 400);
 });
 
 test('el horario del resumen se guarda, se valida, y admite varias franjas', async () => {

@@ -132,14 +132,16 @@ test('sin ficha en Planning Center: aunque declare algo, no se le pide pasar por
   assert.doesNotMatch(persona.html, /Contrastando con Planning Center/);
 });
 
-test('sin líder asignado: se avisa a la administración (con la plantilla editable) y no a nadie más', async () => {
+test('sin seguimiento de Equipos en la ciudad: se avisa a la administración (con la plantilla editable) y no a nadie más', async () => {
   reset(); person = { id: '58' }; course = { bases1: true, bases2: true, gc: true };
-  const other = Number(db.prepare("INSERT INTO teams (name) VALUES ('Sin líder')").run().lastInsertRowid);
-  const id = apply(other);
+  // Ciudad nueva, sin nadie de seguimiento de Equipos asignado (el líder del módulo está en Madrid, no aquí)
+  const cSinSeguimiento = Number(db.prepare("INSERT INTO cities (name) VALUES ('Sin Seguimiento Equipos')").run().lastInsertRowid);
+  const otherTeam = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo Sin Seguimiento')").run().lastInsertRowid);
+  const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana Ruiz','anasinseguimiento@x.es','600111222',?,?,24)`).run(cSinSeguimiento, otherTeam).lastInsertRowid);
   await flow.process(id);
   assert.equal(to('admin@test.es').length, 1);
   const aviso = to('admin@test.es')[0];
-  assert.match(aviso.subject, /Sin líder para Sin líder/);
+  assert.match(aviso.subject, /Sin seguimiento de Equipos en Sin Seguimiento Equipos/);
   assert.match(aviso.html, /Ana Ruiz/);
   assert.match(aviso.html, /600111222/);
 });
