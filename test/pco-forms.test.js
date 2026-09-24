@@ -1,6 +1,6 @@
-// getFormStatus y getGcInfo contra un Planning Center simulado que se comporta como la API real:
-// no existe /people/v2/people/{id}/form_submissions (hay que leer los envíos de cada formulario) y la membresía de
-// Groups solo trae el id del grupo.
+// getFormStatus y getGcInfo contra un Planning Center simulado que se comporta como la API real: sí existe
+// /people/v2/people/{id}/form_submissions (comprobado contra producción) y la membresía de Groups solo trae el
+// id del grupo, hay que resolverlo aparte.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
@@ -32,9 +32,9 @@ const server = http.createServer((req, res) => {
   const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
   let m;
   if (url.pathname === '/people/v2/forms') return send(200, { data: forms.map((f) => ({ type: 'Form', id: f.id, attributes: { name: f.name } })) });
-  if ((m = url.pathname.match(/^\/people\/v2\/forms\/(\d+)\/form_submissions$/))) {
-    const rows = submissions.filter((s) => s.form === m[1]).sort((a, b) => b.at.localeCompare(a.at));
-    return send(200, { data: rows.map((s, i) => ({ type: 'FormSubmission', id: `${s.form}-${i}`, attributes: { created_at: s.at }, relationships: { person: { data: { type: 'Person', id: s.person } } } })) });
+  if ((m = url.pathname.match(/^\/people\/v2\/people\/(\d+)\/form_submissions$/))) {
+    const rows = submissions.filter((s) => s.person === m[1]).sort((a, b) => b.at.localeCompare(a.at));
+    return send(200, { data: rows.map((s, i) => ({ type: 'FormSubmission', id: `${s.form}-${i}`, attributes: { created_at: s.at }, relationships: { form: { data: { type: 'Form', id: s.form } } } })) });
   }
   if (url.pathname === '/groups/v2/group_types') return send(200, { data: [{ type: 'GroupType', id: '10', attributes: { name: 'Grupo de Conexión BCN' } }] });
   if (url.pathname === '/groups/v2/people/100/memberships') return send(200, { data: [{ type: 'Membership', id: 'm1', attributes: { joined_at: '2026-09-23T00:00:00Z' }, relationships: { group: { data: { type: 'Group', id: '77' } } } }] });
@@ -48,15 +48,12 @@ test.before(async () => {
 });
 test.after(() => server.close());
 
-test('getFormStatus lee los envíos de cada formulario (Bases 1, Bases 2, GC; Bases 3 no cuenta), sin la ruta por persona', async () => {
+test('getFormStatus lee los envíos de la persona y los cruza con los formularios de cada curso (Bases 1, Bases 2, GC; Bases 3 no cuenta)', async () => {
   const pco = require('../src/pco');
   assert.deepEqual(await pco.getFormStatus('100'), { bases1: true, bases2: false, gc: true });
   assert.deepEqual(await pco.getFormStatus('200'), { bases1: false, bases2: true, gc: false });
   assert.deepEqual(await pco.getFormStatus('300'), { bases1: false, bases2: false, gc: false });
-  assert.ok(!requests.some((p) => /\/people\/v2\/people\/\d+\/form_submissions/.test(p)), 'no usa la ruta por persona (no existe)');
-  const before = requests.length;
-  await pco.getFormStatus('100');
-  assert.equal(requests.length, before, 'los envíos quedan en memoria unos minutos');
+  assert.ok(requests.some((p) => p === '/people/v2/people/100/form_submissions'), 'usa la ruta por persona (comprobada contra producción)');
 });
 
 test('getGcInfo: membresía activa en un grupo de tipo «Grupo de Conexión»', async () => {

@@ -220,50 +220,22 @@ async function formIdsByCourse() {
   return ids;
 }
 
-// La API de Planning Center no tiene «envíos de una persona» (no existe /people/v2/people/{id}/form_submissions):
-// se leen los envíos de cada formulario y se guarda en memoria quién lo ha enviado. Tras la primera lectura solo se
-// piden los envíos nuevos (van ordenados del más reciente al más antiguo); una vez al día se rehace entero.
-const formIndexes = new Map(); // formId -> { people: Set(personId), newest, builtAt, checkedAt }
-
-async function formIndex(formId) {
-  let e = formIndexes.get(formId);
-  if (e && Date.now() - e.checkedAt < 5 * 60 * 1000) return e;
-  if (!e || Date.now() - e.builtAt > 24 * 3600 * 1000) e = { people: new Set(), newest: '', builtAt: Date.now(), checkedAt: 0 };
-  const since = e.newest;
-  let next = `/people/v2/forms/${formId}/form_submissions`;
-  let q = { per_page: 100, order: '-created_at' };
-  for (let page = 0; next && page < 200; page++) {
-    const json = await request('GET', next, { query: q });
-    const subs = json?.data || [];
-    for (const s of subs) {
-      const at = String(attrs(s).created_at || '');
-      const pid = s.relationships?.person?.data?.id;
-      if (since && at <= since) continue;
-      if (pid) e.people.add(String(pid));
-      if (at > e.newest) e.newest = at;
-    }
-    if (since && subs.some((s) => String(attrs(s).created_at || '') <= since)) break; // ya llegamos a lo conocido
-    next = json?.links?.next || null;
-    q = undefined;
-  }
-  e.checkedAt = Date.now();
-  formIndexes.set(formId, e);
-  return e;
-}
-
 /**
  * ¿Ha enviado la persona el formulario de registro de Bases 1, Bases 2 y/o GC? Independiente de si Planning
  * Center ya ha confirmado el curso (eso tarda: alguien tiene que pasar asistencia o marcar el GC) — sirve para
  * ver, mientras se espera esa confirmación, si la persona ya se está apuntando por su cuenta.
+ *
+ * Usa /people/v2/people/{id}/form_submissions (comprobado contra producción: existe y responde bien). La
+ * alternativa de recorrer cada formulario entero para construir un índice se probó y se descartó: en un
+ * formulario activo (con envíos nuevos entrando mientras se pagina) la paginación puede saltarse registros —
+ * comprobado también contra producción, donde así faltaba un envío real que sí existía.
  */
 async function getFormStatus(personId) {
   const ids = await formIdsByCourse();
-  const out = {};
-  for (const k of Object.keys(ids)) {
-    out[k] = false;
-    for (const id of ids[k]) if ((await formIndex(id)).people.has(String(personId))) out[k] = true;
-  }
-  return { bases1: out.bases1, bases2: out.bases2, gc: out.gc };
+  const { data } = await getAll(`/people/v2/people/${personId}/form_submissions`, { per_page: 100 });
+  const submitted = new Set(data.map((d) => String(d.relationships?.form?.data?.id || '')));
+  const has = (k) => [...ids[k]].some((id) => submitted.has(id));
+  return { bases1: has('bases1'), bases2: has('bases2'), gc: has('gc') };
 }
 
 // ---------- Grupo de Conexión (Planning Center Groups) ----------
