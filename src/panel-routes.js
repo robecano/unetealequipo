@@ -154,7 +154,7 @@ function applicationsCsv(rows, { withLeaders = false } = {}) {
     'Formulario Bases 1', 'Formulario Bases 2', 'Formulario GC',
     ...(withLeaders ? ['Seguimiento de Equipos', 'Seguimiento de Bases', 'Seguimiento de GC'] : []),
     'Bases: veces contactada', 'Bases: fechas de contacto', 'GC: veces contactada', 'GC: fechas de contacto',
-    'OK con PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
+    'Verificado en PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_url || '', a.gc_group_name || '',

@@ -57,7 +57,7 @@ test('tiempo mínimo insuficiente: no se avisa al líder, y el asunto/tono es di
   assert.match(m.html, /entrevista previa/);
 });
 
-test('resumen de seguimiento de Equipos: nuevas, seguimiento y resto solo aparecen si hay alguien, con los cursos y OK con PCO de cada uno', () => {
+test('resumen de seguimiento de Equipos: nuevas, seguimiento y resto solo aparecen si hay alguien, con los cursos y Verificado en PCO de cada uno', () => {
   const vacio = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [], seguimiento: [], resto: [] });
   assert.doesNotMatch(vacio.html, /Nuevas desde el último resumen|Toca hacer seguimiento|Resto de tu lista/);
   const lleno = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [{ ...person, name: 'Otra', contrastado: contrastadoOk }] });
@@ -66,11 +66,11 @@ test('resumen de seguimiento de Equipos: nuevas, seguimiento y resto solo aparec
   assert.match(lleno.html, /Resto de tu lista/);
   assert.match(lleno.html, /Ana &lt;b&gt;Ruiz&lt;\/b&gt;/);
   assert.match(lleno.html, /Bases 1: Sí · Bases 2: No · GC: Sí/);
-  assert.match(lleno.html, /OK con PCO: No/);
+  assert.match(lleno.html, /Verificado en PCO: No/);
   assert.match(lleno.html, /Contacta con el equipo de PCO de tu campus/);
   assert.match(lleno.html, /Recuerda que es importante que haga los pasos que le faltan antes de empezar a servir/);
   assert.match(lleno.html, /Otra/);
-  assert.match(lleno.html, /OK con PCO: Sí/);
+  assert.match(lleno.html, /Verificado en PCO: Sí/);
 });
 
 test('lista del líder de Bases y del líder de GC: mismo formato que la del líder de equipo, con la ciudad en el asunto', () => {
@@ -90,7 +90,7 @@ test('lista del líder de Bases y del líder de GC: mismo formato que la del lí
 test('el recordatorio aparece aunque esté contrastado, si de verdad le falta algo', () => {
   const contrastadoOkConFalta = { ok: true, label: 'Sí', reminder: 'Recuerda que es importante que haga el paso que le falta antes de empezar a servir.' };
   const m = emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [{ ...person, contrastado: contrastadoOkConFalta }], seguimiento: [], resto: [] });
-  assert.match(m.html, /OK con PCO: Sí/);
+  assert.match(m.html, /Verificado en PCO: Sí/);
   assert.doesNotMatch(m.html, /⚠/, 'sin aviso de contraste: solo el recordatorio');
   assert.match(m.html, /Recuerda que es importante que haga el paso que le falta antes de empezar a servir/);
 });

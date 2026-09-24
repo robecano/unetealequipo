@@ -70,7 +70,7 @@ const needsGc = (a) => accepted(a.pco_bases1, a.self_bases1) && !a.pco_gc;
 
 const CATEGORY = { falta_bases1: 'Falta Bases 1', falta_bases2: 'Falta Bases 2', falta_gc: 'Falta GC', completo: 'Completo' };
 
-/** «OK con PCO»: si no cuadra, el motivo y el consejo (preguntar a la persona, o avisar al equipo de PCO del campus); si le falta algo de verdad, el recordatorio, aunque esté contrastado. */
+/** «Verificado en PCO»: si no cuadra, el motivo y el consejo (preguntar a la persona, o avisar al equipo de PCO del campus); si le falta algo de verdad, el recordatorio, aunque esté contrastado. */
 function contrastado(c) {
   if (!c) return h('td', {}, '—');
   return h('td', {}, h('span', { class: c.ok ? 'ok' : 'no' }, c.label), !c.ok ? h('div', { class: 'warn-mini' }, c.guidance) : null, c.reminder ? h('div', { class: 'warn-mini' }, c.reminder) : null);
@@ -104,7 +104,7 @@ async function applicationsView(box) {
   const cat = isAdminLike ? h('select', {}, h('option', { value: '' }, 'Todas las categorías'), ...Object.entries(CATEGORY).map(([k, v]) => h('option', { value: k }, v))) : null;
   const body = h('div');
   const isRoleLeader = ['bases', 'gc'].includes(me.role);
-  const infoHeader = isRoleLeader ? 'Qué le falta' : 'OK con PCO';
+  const infoHeader = isRoleLeader ? 'Qué le falta' : 'Verificado en PCO';
   // Las columnas de formulario solo interesan a quien puede necesitar ese curso: Bases ve las suyas, GC la suya,
   // y seguimiento de Equipos/administración ven las tres (ellos ven a todos, tengan o no algo pendiente).
   const showFormBases = ['bases', 'leader', 'admin', 'city_admin'].includes(me.role);

@@ -8,7 +8,7 @@ Un sistema que recoge a las personas que quieren **servir en un equipo** de la i
 
 ## ¿Qué recibo?
 - **No** un email por cada persona que se apunta — para eso está tu lista programada y el panel.
-- Una **lista completa por email dos veces por semana** (domingo a las 22:00 y jueves a las 8:00, salvo que administración lo cambie; cada ciudad puede tener su propio horario), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «OK con Planning Center».
+- Una **lista completa por email dos veces por semana** (domingo a las 22:00 y jueves a las 8:00, salvo que administración lo cambie; cada ciudad puede tener su propio horario), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «Verificado en Planning Center».
 - En el panel siempre ves la lista al día, así que si no quieres esperar a la próxima lista, entra y mira directamente.
 
 ## Si haces seguimiento de Equipos
@@ -33,7 +33,7 @@ Ves, en **toda tu ciudad** (de cualquier equipo), a quien ya tenga **Bases 1** (
 ## Si eres admin de ciudad
 Como administración, pero limitado a tu ciudad: ves y tocas sus solicitudes; gestionas sus equipos (cualquier campo, aunque en «ciudades donde se puede elegir» solo puedes marcar o quitar la tuya); das de alta y gestionas a quien hace seguimiento de Equipos, de Bases o de GC en tu ciudad; editas los emails, el texto y también el horario de la lista completa, pero solo de tu ciudad (arriba tienes un selector, aunque si solo gestionas una no hace falta tocarlo). No puedes crear ciudades.
 
-## La columna «Qué le falta» (Bases y GC) / «OK con Planning Center» (seguimiento de Equipos y administración)
+## La columna «Qué le falta» (Bases y GC) / «Verificado en Planning Center» (seguimiento de Equipos y administración)
 Si haces seguimiento de **Bases o de GC**, junto a cada persona ves, curso a curso, qué le falta:
 - **No lo tiene hecho:** de verdad le falta ese paso.
 - **Actualizar información en PCO contrastándola:** lo dice en el formulario, pero Planning Center no lo confirma (para Bases, puede que le faltara marcar la asistencia). Coméntaselo en la llamada.

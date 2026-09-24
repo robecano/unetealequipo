@@ -8,14 +8,14 @@ const COURSES = {
   gc: { label: 'un Grupo de Conexión (GC)', url: () => config.urls.gc },
 };
 
-/** Una persona en una lista para el líder: sus datos, sus cursos y, si algo no cuadra, el aviso de «OK con PCO». */
+/** Una persona en una lista para el líder: sus datos, sus cursos y, si algo no cuadra, el aviso de «Verificado en PCO». */
 const person = (a) => {
   const bits = [`<b>${esc(a.name)}</b>`, `<a href="tel:${esc(a.phone)}">${esc(a.phone)}</a>`, `<a href="mailto:${esc(a.email)}">${esc(a.email)}</a>`];
   if (a.city) bits.push(esc(a.city));
   if (a.team) bits.push(esc(a.team));
   if (a.pco_url) bits.push(`<a href="${esc(a.pco_url)}">Perfil</a>`);
   let line = bits.join(' · ');
-  if (a.cursos) line += `<br><span style="color:#71717a">${esc(a.cursos)} · OK con PCO: ${esc(a.contrastado?.label ?? '')}</span>`;
+  if (a.cursos) line += `<br><span style="color:#71717a">${esc(a.cursos)} · Verificado en PCO: ${esc(a.contrastado?.label ?? '')}</span>`;
   if (a.contrastado && !a.contrastado.ok) line += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
   if (a.contrastado?.reminder) line += `<br><span style="color:#b45309">${esc(a.contrastado.reminder)}</span>`;
   return line;

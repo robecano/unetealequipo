@@ -214,7 +214,7 @@ function sampleContext(key) {
   const persona2 = { ...person, name: 'Luis Pérez', phone: '+34 611 222 333', email: 'luis@ejemplo.es', cursos: 'Bases 1: Sí · Bases 2: Sí · GC: Sí', contrastado: contrastadoOk };
   const line = (a) => {
     let l = `<b>${esc(a.name)}</b> · <a href="tel:${esc(a.phone)}">${esc(a.phone)}</a> · <a href="mailto:${esc(a.email)}">${esc(a.email)}</a> · ${esc(a.city)} · <a href="${esc(a.pco_url)}">Perfil</a>`;
-    if (a.cursos) l += `<br><span style="color:#71717a">${esc(a.cursos)} · OK con PCO: ${esc(a.contrastado.label)}</span>`;
+    if (a.cursos) l += `<br><span style="color:#71717a">${esc(a.cursos)} · Verificado en PCO: ${esc(a.contrastado.label)}</span>`;
     if (!a.contrastado.ok) l += `<br><span style="color:#b45309">⚠ ${esc(a.contrastado.guidance)}</span>`;
     if (a.contrastado.reminder) l += `<br><span style="color:#b45309">${esc(a.contrastado.reminder)}</span>`;
     return l;
