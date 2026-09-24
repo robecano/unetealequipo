@@ -9,5 +9,7 @@ const pco = require('../src/pco');
   const person = await pco.findPerson({ email, phone, name: '' });
   if (!person) return console.log('No se encontró ninguna persona.');
   console.log('Persona:', person.id, person.name, person.url);
-  console.log('Cursos:', await pco.getCourseStatus(person.id, { fields: config.fields, required: config.required }));
+  console.log('Bases 1 / Bases 2:', await pco.getCourseStatus(person.id, { fields: config.fields, required: config.required }));
+  console.log('GC (según Planning Center Groups, no el checkbox):', await pco.getGcInfo(person.id));
+  console.log('Formularios enviados:', await pco.getFormStatus(person.id));
 })().catch((e) => { console.error('Error:', e.message); process.exit(1); });

@@ -161,9 +161,14 @@ function fieldDone(values, required) {
   return required.every((r) => have.has(norm(r)));
 }
 
+/**
+ * Bases 1 y Bases 2: se leen de los campos personalizados de la ficha (asistencia real a las sesiones). El GC
+ * ya NO se lee de aquí (del checkbox «GC Asignado»): ver getGcInfo, que comprueba la membresía real en
+ * Planning Center Groups, porque el checkbox se puede quedar desactualizado.
+ */
 async function getCourseStatus(personId, { fields, required }) {
   const ids = {};
-  for (const k of ['bases1', 'bases2', 'gc']) ids[k] = String(await fieldDefinitionId(fields[k]));
+  for (const k of ['bases1', 'bases2']) ids[k] = String(await fieldDefinitionId(fields[k]));
   const { data } = await getAll(`/people/v2/people/${personId}/field_data`);
   const out = {};
   for (const k of Object.keys(ids)) {
@@ -245,30 +250,37 @@ async function gcGroupTypeIds() {
 }
 
 /**
- * Nombre del Grupo de Conexión real (Planning Center Groups) al que pertenece la persona, o null si no está
- * en ninguno. Recorre sus membresías y se queda con la primera que sea de un grupo de tipo "Grupo de Conexión
- * <ciudad>" (no cualquier grupo: hay otros tipos, como los de asistencia a Bases). Nunca lanza: si algo falla
- * (API caída, sin permisos…) se traga el error y devuelve null, para no bloquear el resto del proceso por esto.
+ * ¿Está la persona en un Grupo de Conexión de verdad, según Planning Center Groups (no el checkbox "GC
+ * Asignado" de su ficha, que se puede quedar desactualizado)? Recorre sus membresías y busca una de un grupo de
+ * tipo "Grupo de Conexión <ciudad>" que siga activo (no archivado) — así es como se comprueba a mano en
+ * groups.planningcenteronline.com. Si solo encuentra una membresía en un grupo ya archivado, no cuenta como
+ * "en GC" pero se devuelve igualmente su nombre (por si sirve de referencia). Nunca lanza: si algo falla (API
+ * caída, sin permisos…) se traga el error y devuelve que no está en ningún GC, para no bloquear el resto del
+ * proceso por esto.
  */
-async function getGcGroupName(personId) {
-  if (!personId) return null;
+async function getGcInfo(personId) {
+  if (!personId) return { inGc: false, groupName: null };
   try {
     const typeIds = await gcGroupTypeIds();
-    if (!typeIds.size) return null;
+    if (!typeIds.size) return { inGc: false, groupName: null };
     const { data: memberships } = await getAll(`/groups/v2/people/${personId}/memberships`);
+    let archivedName = null;
     for (const m of memberships) {
       const groupId = m.relationships?.group?.data?.id;
       if (!groupId) continue;
       const json = await request('GET', `/groups/v2/groups/${groupId}`, { query: { include: 'group_type' } });
-      const typeId = String(json.data?.relationships?.group_type?.data?.id || '');
-      if (typeIds.has(typeId)) return attrs(json.data).name || null;
+      const group = json.data;
+      const typeId = String(group?.relationships?.group_type?.data?.id || '');
+      if (!typeIds.has(typeId)) continue;
+      if (!attrs(group).archived_at) return { inGc: true, groupName: attrs(group).name || null };
+      archivedName ??= attrs(group).name || null;
     }
-    return null;
+    return { inGc: false, groupName: archivedName };
   } catch {
-    return null;
+    return { inGc: false, groupName: null };
   }
 }
 
 module.exports = {
   PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey,
-  getGcGroupName, gcGroupTypeIds, getFormStatus };
+  getGcInfo, gcGroupTypeIds, getFormStatus };

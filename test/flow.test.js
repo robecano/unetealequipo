@@ -23,6 +23,7 @@ const flow = createFlow({
   pco: {
     findPerson: async () => person,
     getCourseStatus: async () => course,
+    getGcInfo: async () => ({ inGc: course.gc, groupName: null }),
     addNote: async (id, text) => notes.push([id, text]),
   },
   mail: { sendMail: async (m) => sent.push(m) },
@@ -172,25 +173,32 @@ test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y n
   assert.equal(to('lider@test.es').length, 0, 'refreshCourses no avisa a nadie: solo se ve en el panel y en la lista');
 });
 
-test('gc_group_name: se guarda al procesar y al refrescar (si pco.getGcGroupName lo encuentra), y nunca rompe si no existe esa función', async () => {
-  reset(); person = { id: '901' }; course = { bases1: true, bases2: false, gc: false };
+test('el GC (pco_gc y gc_group_name) viene de pco.getGcInfo (Planning Center Groups), no del checkbox de getCourseStatus, y nunca rompe si no existe esa función', async () => {
+  reset(); person = { id: '901' }; course = { bases1: true, bases2: false };
   const flowSinGc = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course }, mail: { sendMail: async (m) => sent.push(m) } });
   const idSinGc = apply(av);
-  await flowSinGc.process(idSinGc); // pco.getGcGroupName no existe: no debe romper
-  assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idSinGc).gc_group_name, null);
+  await flowSinGc.process(idSinGc); // pco.getGcInfo no existe: no debe romper, y pco_gc queda "no se sabe" (null)
+  const rowSin = db.prepare('SELECT pco_gc, gc_group_name FROM applications WHERE id=?').get(idSinGc);
+  assert.equal(rowSin.pco_gc, null);
+  assert.equal(rowSin.gc_group_name, null);
 
-  let gcName = 'Pablo y Carolina';
+  let gcInfo = { inGc: true, groupName: 'Pablo y Carolina' };
   const flowConGc = createFlow({
-    pco: { findPerson: async () => person, getCourseStatus: async () => course, getGcGroupName: async () => gcName },
+    pco: { findPerson: async () => person, getCourseStatus: async () => course, getGcInfo: async () => gcInfo },
     mail: { sendMail: async (m) => sent.push(m) },
   });
   const idConGc = apply(av);
   await flowConGc.process(idConGc);
-  assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idConGc).gc_group_name, 'Pablo y Carolina');
+  let rowCon = db.prepare('SELECT pco_gc, gc_group_name FROM applications WHERE id=?').get(idConGc);
+  assert.equal(rowCon.pco_gc, 1);
+  assert.equal(rowCon.gc_group_name, 'Pablo y Carolina');
 
-  gcName = 'Diana y Marlin'; // cambia de grupo: refreshCourses lo actualiza
+  // Se archiva su grupo (o cambia de uno a otro): refreshCourses lo actualiza, ya no cuenta como "en GC"
+  gcInfo = { inGc: false, groupName: 'Diana y Marlin' };
   await flowConGc.refreshCourses();
-  assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idConGc).gc_group_name, 'Diana y Marlin');
+  rowCon = db.prepare('SELECT pco_gc, gc_group_name FROM applications WHERE id=?').get(idConGc);
+  assert.equal(rowCon.pco_gc, 0);
+  assert.equal(rowCon.gc_group_name, 'Diana y Marlin');
 });
 
 test('form_bases1/form_bases2/form_gc: se guardan al procesar y al refrescar (si pco.getFormStatus existe), y nunca rompen si no existe esa función', async () => {

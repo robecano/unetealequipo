@@ -45,13 +45,19 @@ function noteTexts(a) {
 }
 
 function createFlow({ pco, mail }) {
-  /** Nombre real del Grupo de Conexión en Planning Center, si se encuentra (ver pco.getGcGroupName). Nunca lanza. */
-  const fetchGcGroupName = async (personId) => {
-    if (!personId || typeof pco.getGcGroupName !== 'function') return null;
+  /**
+   * ¿Está en un Grupo de Conexión de verdad, y cómo se llama (ver pco.getGcInfo)? Esta es la fuente de verdad
+   * para "tiene GC" — ya no el checkbox "GC Asignado" de Planning Center, que se puede quedar desactualizado.
+   * Nunca lanza; si `pco.getGcInfo` no existe (p. ej. en una prueba que no lo necesita), se trata como que no
+   * se sabe.
+   */
+  const fetchGcInfo = async (personId) => {
+    if (!personId || typeof pco.getGcInfo !== 'function') return { inGc: null, groupName: null };
     try {
-      return await pco.getGcGroupName(personId);
+      const info = await pco.getGcInfo(personId);
+      return { inGc: +!!info.inGc, groupName: info.groupName ?? null };
     } catch {
-      return null;
+      return { inGc: null, groupName: null };
     }
   };
   /** Si ha enviado el formulario de registro de Bases 1/2/GC (ver pco.getFormStatus). Nunca lanza. */
@@ -131,13 +137,14 @@ function createFlow({ pco, mail }) {
     try {
       person = await pco.findPerson({ email: a.email, phone: a.phone, name: a.name });
       // Sin ficha en Planning Center se trata como si no tuviera nada (ni Bases 1, ni Bases 2, ni GC)
-      course = person ? await pco.getCourseStatus(person.id, { fields: config.fields, required: config.required }) : { bases1: false, bases2: false, gc: false };
+      course = person ? await pco.getCourseStatus(person.id, { fields: config.fields, required: config.required }) : { bases1: false, bases2: false };
     } catch (e) {
       db.prepare('UPDATE applications SET error=?, updated_at=? WHERE id=?').run(String(e.message).slice(0, 300), now(), id);
       logEvent(id, null, 'pco_error', e.message);
       return 'recibida'; // el planificador lo reintenta
     }
 
+    const gcInfo = await fetchGcInfo(person?.id);
     const forms = person ? await fetchFormStatus(person.id) : { bases1: null, bases2: null, gc: null };
     setStatus('listo', {
       ready_at: now(),
@@ -145,8 +152,8 @@ function createFlow({ pco, mail }) {
       pco_person_id: person?.id ?? null,
       pco_bases1: person ? +course.bases1 : null, // null = no se sabe (no hay ficha)
       pco_bases2: person ? +course.bases2 : null,
-      pco_gc: person ? +course.gc : null,
-      gc_group_name: person ? await fetchGcGroupName(person.id) : null,
+      pco_gc: gcInfo.inGc, // según Planning Center Groups, no el checkbox «GC Asignado»
+      gc_group_name: gcInfo.groupName,
       form_bases1: forms.bases1,
       form_bases2: forms.bases2,
       form_gc: forms.gc,
@@ -196,10 +203,10 @@ function createFlow({ pco, mail }) {
           await writeNotes(r.id);
         }
         const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
-        const gcGroupName = await fetchGcGroupName(personId);
+        const gcInfo = await fetchGcInfo(personId); // según Planning Center Groups, no el checkbox «GC Asignado»
         const forms = await fetchFormStatus(personId);
         db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, form_bases1=?, form_bases2=?, form_gc=?, updated_at=? WHERE id=?')
-          .run(+c.bases1, +c.bases2, +c.gc, gcGroupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
+          .run(+c.bases1, +c.bases2, gcInfo.inGc, gcInfo.groupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
         refreshed++;
       } catch (e) {
         logEvent(r.id, null, 'pco_error', e.message);

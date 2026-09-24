@@ -20,7 +20,7 @@ Ves a **todos** los que se apuntan en tu ciudad, de cualquier equipo, tengan o n
 
 No hace falta que tenga Bases 1, Bases 2 o GC hechos para contactarla: llámala igual y, si le falta algo, coméntaselo tú mismo en la llamada (el email que recibió ya se lo explicó). Junto a cada persona a la que le falte algo verás si **Bases y/o GC ya la han contactado**, con **todas las fechas** en que lo han hecho (no solo la última) — te sirve para saber si hace falta insistir o esperar antes de tu propia llamada.
 
-Si ya tiene un Grupo de Conexión real en Planning Center, verás su nombre (p. ej. «GC: Pablo y Carolina») junto a sus datos.
+Si tiene GC («GC» en verde) es porque está de verdad en un grupo activo en Planning Center Groups, no por un simple checkbox — cuando se encuentra, verás también su nombre real (p. ej. «GC: Pablo y Carolina») junto a sus datos.
 
 ## Si haces seguimiento de Bases
 Ves, en **toda tu ciudad** (de cualquier equipo), a quien le falte **Bases 1 o Bases 2 según Planning Center**. Llámala para invitarla a apuntarse en hillsong.es/bases y contarle cómo funciona. Cuando la hayas llamado, pulsa **Contactar** — cada pulsación añade un contacto nuevo con la fecha de hoy, y se ven todas las fechas de contacto, así seguimiento de Equipos lo sabe sin que tengas que avisarle tú. Si te equivocas, pulsa **Deshacer** justo al lado: quita el último contacto que marcaste. No cambias el estado general de la solicitud ni puedes borrarla (eso lo llevan seguimiento de Equipos o administración), pero puedes dejar un comentario.

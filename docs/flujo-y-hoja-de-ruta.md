@@ -15,7 +15,7 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
 ## 2. Flujo, paso a paso
 1. **La persona se apunta** en la web: nombre, email, teléfono, ciudad, equipo, cuánto tiempo lleva en la iglesia, y si tiene Bases 1, GC y Bases 2.
 2. **Tiempo mínimo.** Si el equipo lo exige (Kids 12 meses, Cuidado Pastoral 24) y no llega, recibe un email explicándolo y no se avisa a nadie más.
-3. **Se busca en Planning Center** por email y teléfono (con desempate por nombre si hay duplicados) y se leen sus cursos: Bases 1, Bases 2 (sesiones 1 y 2) y GC.
+3. **Se busca en Planning Center** por email y teléfono (con desempate por nombre si hay duplicados) y se leen sus cursos: Bases 1, Bases 2 (sesiones 1 y 2) de sus campos personalizados, y GC comprobando su membresía real en Planning Center Groups (un grupo activo de tipo Grupo de Conexión de su campus, no un checkbox de la ficha que se puede quedar desactualizado).
    - Lo que la persona **declara** en el formulario cuenta como hecho aunque no conste en Planning Center.
    - **Sin ficha en Planning Center = como si no tuviera nada** (se trata igual, y se ve marcado en «Contrastado con PCO»).
 4. **Notas en su perfil de Planning Center** (categoría «Interesado en servir»): interés en servir en el equipo y, si procede, lo que dijo tener y no consta.
