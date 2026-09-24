@@ -45,10 +45,8 @@ Si haces **seguimiento de Equipos o eres administración**, en su lugar ves si l
 
 Si le falta algo de verdad, verás también ahí un recordatorio para que lo complete antes de empezar a servir, aunque ponga «Sí» (contrastado y completo son cosas distintas).
 
-## Columnas «Form. B1», «Form. B2» y «Form. GC»
-Junto a los cursos que le falten a la persona (según Planning Center) verás si **ya ha enviado el formulario de registro** de ese paso (hillsong.es/bases o hillsong.es/gc) — independiente de que Planning Center todavía no confirme el curso, porque eso tarda: alguien tiene que pasar asistencia o marcar el GC. Te sirve para saber si ya se está apuntando o si hace falta animarla a hacerlo.
-- **✓ / ✗:** ha enviado el formulario o no.
-- **—:** no aplica (ya tiene ese paso hecho, o no es tu caso: seguimiento de Bases solo ve sus dos columnas, seguimiento de GC solo la suya).
+## «Formulario ✓» / «Sin formulario» bajo B1, GC o B2
+Cuando a la persona le falta un curso (según Planning Center), justo debajo del ✗ verás si **ya ha enviado el formulario de registro** de ese paso (hillsong.es/bases o hillsong.es/gc) — independiente de que Planning Center todavía no confirme el curso, porque eso tarda: alguien tiene que pasar asistencia o marcar el GC. Te sirve para saber si ya se está apuntando o si hace falta animarla a hacerlo. Si ya tiene el curso hecho no se muestra nada ahí, y seguimiento de Bases solo lo ve bajo B1/B2, seguimiento de GC solo bajo GC.
 
 ## Botones útiles
 - **B1 / GC / B2:** ✓ si lo tiene (por Planning Center o porque lo declaró en el formulario), ✗ si no.
