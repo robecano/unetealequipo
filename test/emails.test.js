@@ -255,20 +255,21 @@ test('email de prueba: solo al propio administrador y sin SMTP no envía nada', 
   assert.equal((await req('admin', 'POST', `/api/panel/admin/emails/leader_digest/test?city_id=${cityId}`, { subject: 's', heading: 'h', body: 'sin secciones' })).status, 400);
 });
 
-test('el horario del resumen se guarda, se valida, y admite varias franjas', async () => {
-  assert.deepEqual(digestSchedule(), [{ day: 0, hour: 22 }, { day: 4, hour: 8 }], 'por defecto: domingo 22:00 y jueves 8:00');
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 9, hour: 8 }] })).status, 400);
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 2, hour: 25 }] })).status, 400);
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [] })).status, 400);
-  assert.equal((await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 2, hour: 9 }, { day: 2, hour: 9 }] })).status, 400, 'franjas repetidas');
-  const r = await (await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 5, hour: 18 }, { day: 2, hour: 9 }] })).json();
+test('el horario del resumen se guarda por ciudad, se valida, y admite varias franjas', async () => {
+  assert.deepEqual(digestSchedule(cityId), [{ day: 0, hour: 22 }, { day: 4, hour: 8 }], 'por defecto: domingo 22:00 y jueves 8:00');
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/email-schedule?city_id=${cityId}`, { slots: [{ day: 9, hour: 8 }] })).status, 400);
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/email-schedule?city_id=${cityId}`, { slots: [{ day: 2, hour: 25 }] })).status, 400);
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/email-schedule?city_id=${cityId}`, { slots: [] })).status, 400);
+  assert.equal((await req('admin', 'PUT', `/api/panel/admin/email-schedule?city_id=${cityId}`, { slots: [{ day: 2, hour: 9 }, { day: 2, hour: 9 }] })).status, 400, 'franjas repetidas');
+  assert.equal((await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 5, hour: 18 }] })).status, 400, 'falta indicar la ciudad');
+  const r = await (await req('admin', 'PUT', `/api/panel/admin/email-schedule?city_id=${cityId}`, { slots: [{ day: 5, hour: 18 }, { day: 2, hour: 9 }] })).json();
   assert.deepEqual(r.slots, [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
-  assert.deepEqual(digestSchedule(), [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
-  assert.deepEqual((await (await req('admin', 'GET', '/api/panel/admin/emails')).json()).schedule.slots, [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
+  assert.deepEqual(digestSchedule(cityId), [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
+  assert.deepEqual((await (await req('admin', 'GET', `/api/panel/admin/emails?city_id=${cityId}`)).json()).schedule.slots, [{ day: 5, hour: 18 }, { day: 2, hour: 9 }]);
   // la descripción de «Tu lista» (lo que ve el admin en la lista de emails) refleja el horario recién guardado, no el de por defecto
-  const digest = (await (await req('admin', 'GET', '/api/panel/admin/emails')).json()).templates.find((t) => t.key === 'leader_digest');
+  const digest = (await (await req('admin', 'GET', `/api/panel/admin/emails?city_id=${cityId}`)).json()).templates.find((t) => t.key === 'leader_digest');
   assert.match(digest.when, /viernes a las 18:00 y martes a las 09:00/);
-  await req('admin', 'PUT', '/api/panel/admin/email-schedule', { slots: [{ day: 0, hour: 22 }, { day: 4, hour: 8 }] }); // vuelve al horario por defecto para no afectar otras pruebas
+  await req('admin', 'PUT', `/api/panel/admin/email-schedule?city_id=${cityId}`, { slots: [{ day: 0, hour: 22 }, { day: 4, hour: 8 }] }); // vuelve al horario por defecto para no afectar otras pruebas
 });
 
 test('la web: «Cómo funciona» nombra Bases 1, GC y Bases 2 y el formulario pregunta en ese orden', () => {

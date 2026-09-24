@@ -1,5 +1,5 @@
 const config = require('./config');
-const { getSetting, setSetting } = require('./db');
+const { db, getSetting, setSetting } = require('./db');
 const { joinEs } = require('./courses');
 
 /** Devuelve el identificador de la semana local (año + número ISO), para no repetir un envío dentro de la misma semana. */
@@ -18,9 +18,9 @@ function localDayHour(d = new Date()) {
 
 const DEFAULT_SLOTS = [{ day: 0, hour: 22 }, { day: 4, hour: 8 }]; // domingo 22:00 y jueves 8:00
 
-/** Los envíos configurados por el admin, o domingo 22:00 y jueves 8:00 por defecto. Siempre al menos uno. */
-function digestSchedule() {
-  const raw = getSetting('digest_schedule');
+/** Los envíos configurados por esa ciudad, o domingo 22:00 y jueves 8:00 por defecto. Siempre al menos uno. */
+function digestSchedule(cityId) {
+  const raw = getSetting(`digest_schedule:${cityId}`);
   if (!raw) return DEFAULT_SLOTS;
   try {
     const slots = JSON.parse(raw).filter((s) => Number.isInteger(s.day) && s.day >= 0 && s.day <= 6 && Number.isInteger(s.hour) && s.hour >= 0 && s.hour <= 23);
@@ -30,8 +30,8 @@ function digestSchedule() {
   }
 }
 
-function setDigestSchedule(slots) {
-  setSetting('digest_schedule', JSON.stringify(slots));
+function setDigestSchedule(cityId, slots) {
+  setSetting(`digest_schedule:${cityId}`, JSON.stringify(slots));
 }
 
 const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
@@ -42,21 +42,21 @@ function describeSchedule(slots = digestSchedule()) {
   return joinEs(slots.map((s) => `${DAY_NAMES[s.day]} a las ${hh(s.hour)}`));
 }
 
-/** ¿Toca enviar el resumen ahora? Cada franja (día + hora) se envía como mucho una vez por semana. */
-function dueSlot(d = new Date()) {
+/** ¿Toca enviar el resumen ahora en esa ciudad? Cada franja (día + hora) se envía como mucho una vez por semana. */
+function dueSlot(cityId, d = new Date()) {
   const { day, hour } = localDayHour(d);
   const week = weekKey(d);
-  const fired = new Set(JSON.parse(getSetting('digest_fired') || '{}')[week] || []);
-  return digestSchedule().find((s) => s.day === day && hour >= s.hour && !fired.has(`${s.day}-${s.hour}`)) || null;
+  const fired = new Set(JSON.parse(getSetting(`digest_fired:${cityId}`) || '{}')[week] || []);
+  return digestSchedule(cityId).find((s) => s.day === day && hour >= s.hour && !fired.has(`${s.day}-${s.hour}`)) || null;
 }
 
-function markSlotFired(slot, d = new Date()) {
+function markSlotFired(cityId, slot, d = new Date()) {
   const week = weekKey(d);
-  const all = JSON.parse(getSetting('digest_fired') || '{}');
+  const all = JSON.parse(getSetting(`digest_fired:${cityId}`) || '{}');
   // Solo se conserva la semana actual: al cambiar de semana, las franjas anteriores dejan de contar solas.
   const fired = new Set(all[week] || []);
   fired.add(`${slot.day}-${slot.hour}`);
-  setSetting('digest_fired', JSON.stringify({ [week]: [...fired] }));
+  setSetting(`digest_fired:${cityId}`, JSON.stringify({ [week]: [...fired] }));
 }
 
 function start(flow) {
@@ -66,11 +66,15 @@ function start(flow) {
     await flow.retryNotes();
   });
   const hourly = guard('resumen', async () => {
-    const slot = dueSlot();
-    if (!slot) return;
-    markSlotFired(slot); // primero marcar: si falla algo, no se duplica el envío
-    const sent = await flow.sendDigests();
-    console.log(`Resumen (día ${slot.day}, ${slot.hour}:00): ${sent} emails`);
+    const cities = db.prepare('SELECT id FROM cities').all();
+    const due = cities.map((c) => ({ city: c, slot: dueSlot(c.id) })).filter((x) => x.slot);
+    if (!due.length) return;
+    await flow.refreshCourses(); // una sola vez para todas las ciudades que tocan ahora
+    for (const { city, slot } of due) {
+      markSlotFired(city.id, slot); // primero marcar: si falla algo, no se duplica el envío
+      const sent = await flow.sendDigestsForCity(city.id);
+      console.log(`Resumen ciudad ${city.id} (día ${slot.day}, ${slot.hour}:00): ${sent} emails`);
+    }
   });
   setInterval(tick, 5 * 60 * 1000).unref();
   setInterval(hourly, 15 * 60 * 1000).unref();
@@ -78,4 +82,4 @@ function start(flow) {
   setTimeout(hourly, 30000).unref();
 }
 
-module.exports = { start, weekKey, dueSlot, digestSchedule, setDigestSchedule, describeSchedule, DEFAULT_SLOTS };
+module.exports = { start, weekKey, dueSlot, digestSchedule, setDigestSchedule, describeSchedule, markSlotFired, DEFAULT_SLOTS };

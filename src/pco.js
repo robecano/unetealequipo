@@ -217,5 +217,47 @@ async function getBasesFormSubmissions(personId) {
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
+// ---------- Grupo de Conexión (Planning Center Groups) ----------
+// Cada campus tiene su propio GroupType "Grupo de Conexión <ciudad>" (los GC reales no llevan "GC" ni
+// "Conexión" en el nombre del grupo en sí, p. ej. "Pablo y Carolina": se identifican por su categoría, no por
+// el nombre). El checkbox "GC Asignado" de la ficha de la persona no siempre está sincronizado con esto, así
+// que se busca la membresía real en vez de fiarse solo del checkbox.
+const GC_GROUP_TYPE_RE = /^Grupo de Conexi[oó]n\b/i;
+let gcTypeCache = null;
+
+/** IDs de los GroupType "Grupo de Conexión <ciudad>" (uno por campus). Se cachean: no cambian en caliente. */
+async function gcGroupTypeIds() {
+  if (gcTypeCache) return gcTypeCache;
+  const { data } = await getAll('/groups/v2/group_types');
+  gcTypeCache = new Set(data.filter((t) => GC_GROUP_TYPE_RE.test(attrs(t).name || '')).map((t) => String(t.id)));
+  return gcTypeCache;
+}
+
+/**
+ * Nombre del Grupo de Conexión real (Planning Center Groups) al que pertenece la persona, o null si no está
+ * en ninguno. Recorre sus membresías y se queda con la primera que sea de un grupo de tipo "Grupo de Conexión
+ * <ciudad>" (no cualquier grupo: hay otros tipos, como los de asistencia a Bases). Nunca lanza: si algo falla
+ * (API caída, sin permisos…) se traga el error y devuelve null, para no bloquear el resto del proceso por esto.
+ */
+async function getGcGroupName(personId) {
+  if (!personId) return null;
+  try {
+    const typeIds = await gcGroupTypeIds();
+    if (!typeIds.size) return null;
+    const { data: memberships } = await getAll(`/groups/v2/people/${personId}/memberships`);
+    for (const m of memberships) {
+      const groupId = m.relationships?.group?.data?.id;
+      if (!groupId) continue;
+      const json = await request('GET', `/groups/v2/groups/${groupId}`, { query: { include: 'group_type' } });
+      const typeId = String(json.data?.relationships?.group_type?.data?.id || '');
+      if (typeIds.has(typeId)) return attrs(json.data).name || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
-  getBasesFormSubmissions, BASES_FORM, PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey };
+  getBasesFormSubmissions, BASES_FORM, PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey,
+  getGcGroupName, gcGroupTypeIds };

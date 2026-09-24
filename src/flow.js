@@ -45,6 +45,15 @@ function noteTexts(a) {
 }
 
 function createFlow({ pco, mail }) {
+  /** Nombre real del Grupo de Conexión en Planning Center, si se encuentra (ver pco.getGcGroupName). Nunca lanza. */
+  const fetchGcGroupName = async (personId) => {
+    if (!personId || typeof pco.getGcGroupName !== 'function') return null;
+    try {
+      return await pco.getGcGroupName(personId);
+    } catch {
+      return null;
+    }
+  };
   const safeMail = async (id, label, msg, to) => {
     if (msg.enabled === false) return logEvent(id, null, 'email_desactivado', label); // desactivado por el admin en el panel
     try {
@@ -126,6 +135,7 @@ function createFlow({ pco, mail }) {
       pco_bases1: person ? +course.bases1 : null, // null = no se sabe (no hay ficha)
       pco_bases2: person ? +course.bases2 : null,
       pco_gc: person ? +course.gc : null,
+      gc_group_name: person ? await fetchGcGroupName(person.id) : null,
     });
     const after = fullApp(id); // con los datos recién calculados, para el resto del proceso
     const missing = courses.missing(after);
@@ -158,7 +168,7 @@ function createFlow({ pco, mail }) {
    * recibió el suyo al apuntarse, y los cambios se reflejan en el resumen y en el panel.
    */
   async function refreshCourses() {
-    const rows = db.prepare("SELECT id, name, email, phone, pco_person_id FROM applications WHERE status IN ('listo','contactado','visito')").all();
+    const rows = db.prepare("SELECT id, name, email, phone, pco_person_id FROM applications WHERE status IN ('listo','contactado','visito') AND deleted_at IS NULL").all();
     let refreshed = 0;
     for (const r of rows) {
       try {
@@ -172,7 +182,8 @@ function createFlow({ pco, mail }) {
           await writeNotes(r.id);
         }
         const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
-        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, updated_at=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, now(), r.id);
+        const gcGroupName = await fetchGcGroupName(personId);
+        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, updated_at=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, gcGroupName, now(), r.id);
         refreshed++;
       } catch (e) {
         logEvent(r.id, null, 'pco_error', e.message);
@@ -188,9 +199,9 @@ function createFlow({ pco, mail }) {
     const resto = rows.filter((r) => !nuevas.includes(r) && !seguimiento.includes(r));
     return { nuevas: nuevas.map((r) => forTemplate(r)), seguimiento: seguimiento.map((r) => forTemplate(r)), resto: resto.map((r) => forTemplate(r)) };
   }
-  const openAppsIn = (cityIdsUserId) => db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
+  const openAppsInCity = (cityId) => db.prepare(`SELECT a.*, ${TEAM_LABEL} AS team_name, c.name AS city FROM applications a
               JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
-              WHERE a.status IN ('listo','contactado','visito') AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)`).all(cityIdsUserId);
+              WHERE a.status IN ('listo','contactado','visito') AND a.deleted_at IS NULL AND a.city_id = ?`).all(cityId);
   /** Envía el resumen si hay algo que enviar; devuelve si se ha enviado de verdad (false si el email está desactivado). */
   async function sendDigest(msg, to) {
     if (msg.enabled === false) return false;
@@ -199,37 +210,44 @@ function createFlow({ pco, mail }) {
   }
 
   /**
-   * Resumen a cada uno de seguimiento (de Equipos, de Bases y de GC), por ciudad, con su lista abierta: nuevas
-   * desde el último resumen, a quien toca hacer seguimiento y el resto. El de Equipos ve a todos los de su
-   * ciudad (tengan o no cursos hechos); los de Bases y GC, solo a quien de verdad les toca (courses.needsBases /
-   * courses.needsGc). Se envía a la hora y los días configurados (por defecto domingo y jueves).
+   * Resumen a cada uno de seguimiento (de Equipos, de Bases y de GC) de una ciudad, con su lista abierta: nuevas
+   * desde el último resumen de esa ciudad, a quien toca hacer seguimiento y el resto. El de Equipos ve a todos
+   * los de su ciudad (tengan o no cursos hechos); los de Bases y GC, solo a quien de verdad les toca
+   * (courses.needsBases / courses.needsGc). El horario (días y horas) es configurable por ciudad.
    */
-  async function sendDigests() {
+  async function sendDigestsForCity(cityId) {
+    const city = db.prepare('SELECT * FROM cities WHERE id = ?').get(cityId);
+    if (!city) return 0;
     let sent = 0;
-    const prevRun = getSetting('digest_prev_run'); // marca de antes de esta tanda: lo posterior es «nuevo»
-    await refreshCourses();
+    const prevRun = getSetting(`digest_prev_run:${cityId}`); // marca de antes de esta tanda: lo posterior es «nuevo»
+    const rows = openAppsInCity(cityId);
 
     for (const [role, needsIt, buildEmail] of [
       ['leader', () => true, emails.leaderDigestEmail],
       ['bases', courses.needsBases, emails.basesDigestEmail],
       ['gc', courses.needsGc, emails.gcDigestEmail],
     ]) {
-      for (const l of db.prepare('SELECT * FROM users WHERE role=? AND active=1').all(role)) {
-        const rows = openAppsIn(l.id).filter(needsIt);
-        for (const city of db.prepare('SELECT c.* FROM cities c JOIN user_cities uc ON uc.city_id = c.id WHERE uc.user_id = ?').all(l.id)) {
-          const mine = rows.filter((r) => r.city_id === city.id);
-          if (!mine.length) continue;
-          const msg = buildEmail({ city, ...partition(mine, prevRun) }, city.id);
-          if (await sendDigest(msg, l.email)) sent++;
-        }
+      const mine = rows.filter(needsIt);
+      if (!mine.length) continue;
+      for (const l of roleLeadersFor(role, cityId)) {
+        const msg = buildEmail({ city, ...partition(mine, prevRun) }, cityId);
+        if (await sendDigest(msg, l.email)) sent++;
       }
     }
 
-    setSetting('digest_prev_run', now());
+    setSetting(`digest_prev_run:${cityId}`, now());
     return sent;
   }
 
-  return { process, retryReceived, retryNotes, refreshCourses, sendDigests };
+  /** Igual que sendDigestsForCity, pero para todas las ciudades (usado en pruebas y en el planificador si hiciera falta enviar todo de golpe). */
+  async function sendDigests() {
+    await refreshCourses();
+    let sent = 0;
+    for (const city of db.prepare('SELECT id FROM cities').all()) sent += await sendDigestsForCity(city.id);
+    return sent;
+  }
+
+  return { process, retryReceived, retryNotes, refreshCourses, sendDigests, sendDigestsForCity };
 }
 
 module.exports = { createFlow, fullApp, FOLLOWUP_DAYS, OPEN, inDays, now, noteTexts, forTemplate };

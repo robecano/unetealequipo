@@ -8,7 +8,7 @@ Un sistema que recoge a las personas que quieren **servir en un equipo** de la i
 
 ## ¿Qué recibo?
 - **No** un email por cada persona que se apunta — para eso está tu lista programada y el panel.
-- Una **lista completa por email dos veces por semana** (domingo a las 22:00 y jueves a las 8:00, salvo que administración lo cambie; el horario es el mismo para todas las ciudades), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «OK con Planning Center».
+- Una **lista completa por email dos veces por semana** (domingo a las 22:00 y jueves a las 8:00, salvo que administración lo cambie; cada ciudad puede tener su propio horario), con toda tu lista abierta: quién es nuevo desde el último envío, a quién toca hacer seguimiento y el resto, con sus datos, qué cursos tiene y si está «OK con Planning Center».
 - En el panel siempre ves la lista al día, así que si no quieres esperar a la próxima lista, entra y mira directamente.
 
 ## Si haces seguimiento de Equipos
@@ -18,18 +18,20 @@ Ves a **todos** los que se apuntan en tu ciudad, de cualquier equipo, tengan o n
 3. **La semana siguiente:** vuelve a llamarla para saber cómo está y consolidarlo.
 4. Pulsa **Resolver** (o **No continúa**) según corresponda.
 
-No hace falta que tenga Bases 1, Bases 2 o GC hechos para contactarla: llámala igual y, si le falta algo, coméntaselo tú mismo en la llamada (el email que recibió ya se lo explicó). Junto a cada persona a la que le falte algo verás si **Bases y/o GC ya la han contactado** (cuántas veces y cuándo) — te sirve para saber si hace falta insistir o esperar antes de tu propia llamada.
+No hace falta que tenga Bases 1, Bases 2 o GC hechos para contactarla: llámala igual y, si le falta algo, coméntaselo tú mismo en la llamada (el email que recibió ya se lo explicó). Junto a cada persona a la que le falte algo verás si **Bases y/o GC ya la han contactado**, con **todas las fechas** en que lo han hecho (no solo la última) — te sirve para saber si hace falta insistir o esperar antes de tu propia llamada.
+
+Si ya tiene un Grupo de Conexión real en Planning Center, verás su nombre (p. ej. «GC: Pablo y Carolina») junto a sus datos.
 
 ## Si haces seguimiento de Bases
-Ves, en **toda tu ciudad** (de cualquier equipo), a quien le falte **Bases 1 o Bases 2 según Planning Center**. Llámala para invitarla a apuntarse en hillsong.es/bases y contarle cómo funciona. Cuando la hayas llamado, pulsa **Contactar** — cada pulsación añade un contacto nuevo con la fecha de hoy (no hay «deshacer»; si te equivocas, coméntalo), así seguimiento de Equipos lo sabe sin que tengas que avisarle tú. No cambias el estado general de la solicitud ni puedes borrarla (eso lo llevan seguimiento de Equipos o administración), pero puedes dejar un comentario.
+Ves, en **toda tu ciudad** (de cualquier equipo), a quien le falte **Bases 1 o Bases 2 según Planning Center**. Llámala para invitarla a apuntarse en hillsong.es/bases y contarle cómo funciona. Cuando la hayas llamado, pulsa **Contactar** — cada pulsación añade un contacto nuevo con la fecha de hoy, y se ven todas las fechas de contacto, así seguimiento de Equipos lo sabe sin que tengas que avisarle tú. Si te equivocas, pulsa **Deshacer** justo al lado: quita el último contacto que marcaste. No cambias el estado general de la solicitud ni puedes borrarla (eso lo llevan seguimiento de Equipos o administración), pero puedes dejar un comentario.
 
 También verás a quien **dice** tener Bases 1 o Bases 2 pero Planning Center todavía no lo confirma: en ese caso, en vez de pedirle que lo haga, la columna «Qué le falta» te avisa de que hay que **actualizar el dato en Planning Center** (puede que le faltara marcar la asistencia). Coméntaselo en la llamada y, si confirmas que ya lo hizo, avisa al equipo de PCO de tu campus.
 
 ## Si haces seguimiento de GC
-Ves, en **toda tu ciudad** (de cualquier equipo), a quien ya tenga **Bases 1** (declarado en el formulario también vale) y le falte un **Grupo de Conexión según Planning Center**. Llámala para explicarle la importancia de los GC, qué son y cómo funcionan, e invítala a apuntarse en hillsong.es/gc. Igual que Bases: pulsa **Contactar** cada vez que la llames, y si dice estar en un GC que Planning Center no confirma, la columna «Qué le falta» te avisa de que hay que actualizar el dato en Planning Center.
+Ves, en **toda tu ciudad** (de cualquier equipo), a quien ya tenga **Bases 1** (declarado en el formulario también vale) y le falte un **Grupo de Conexión según Planning Center**. Llámala para explicarle la importancia de los GC, qué son y cómo funcionan, e invítala a apuntarse en hillsong.es/gc. Igual que Bases: pulsa **Contactar** cada vez que la llames (con su **Deshacer** al lado si te equivocas), y si dice estar en un GC que Planning Center no confirma, la columna «Qué le falta» te avisa de que hay que actualizar el dato en Planning Center.
 
 ## Si eres admin de ciudad
-Como administración, pero limitado a tu ciudad: ves y tocas sus solicitudes; gestionas sus equipos (cualquier campo, aunque en «ciudades donde se puede elegir» solo puedes marcar o quitar la tuya); das de alta y gestionas a quien hace seguimiento de Equipos, de Bases o de GC en tu ciudad; editas los emails, pero solo el texto de tu ciudad (arriba tienes un selector, aunque si solo gestionas una no hace falta tocarlo). No puedes crear ciudades ni cambiar el horario global de los resúmenes — eso lo lleva el admin total.
+Como administración, pero limitado a tu ciudad: ves y tocas sus solicitudes; gestionas sus equipos (cualquier campo, aunque en «ciudades donde se puede elegir» solo puedes marcar o quitar la tuya); das de alta y gestionas a quien hace seguimiento de Equipos, de Bases o de GC en tu ciudad; editas los emails, el texto y también el horario de la lista completa, pero solo de tu ciudad (arriba tienes un selector, aunque si solo gestionas una no hace falta tocarlo). No puedes crear ciudades.
 
 ## La columna «Qué le falta» (Bases y GC) / «OK con Planning Center» (seguimiento de Equipos y administración)
 Si haces seguimiento de **Bases o de GC**, junto a cada persona ves, curso a curso, qué le falta:
@@ -46,9 +48,10 @@ Si le falta algo de verdad, verás también ahí un recordatorio para que lo com
 ## Botones útiles
 - **B1 / GC / B2:** ✓ si lo tiene (por Planning Center o porque lo declaró en el formulario), ✗ si no.
 - **Perfil PCO:** enlace directo a su ficha de Planning Center, cuando hay una.
-- **Contactar** (Bases y GC): marca un contacto nuevo cada vez que la llamas — se ve en el panel de seguimiento de Equipos, con cuántas veces y la última fecha. No hay «deshacer».
+- **Contactar** (Bases y GC): marca un contacto nuevo cada vez que la llamas — se ve en el panel de seguimiento de Equipos, con todas las fechas en que se la ha contactado.
+- **Deshacer** (junto a Contactar, o «Deshacer estado» junto a los botones de estado): quita el último contacto o el último cambio de estado que marcaste, por si te equivocas.
 - **Contacté / Visitó / Resolver / No continúa** (seguimiento de Equipos y administración): avanza el estado de la solicitud.
-- **Borrar** (solo seguimiento de Equipos y administración): elimina una solicitud de la lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial).
+- **Borrar** (solo seguimiento de Equipos y administración): quita una solicitud de la lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial). Se puede deshacer justo después con el aviso que aparece abajo.
 - **Exportar CSV:** descarga tu lista.
 - **Cabeceras de la tabla:** pulsa cualquiera (Persona, Equipo, Estado…) para ordenar la lista por esa columna; vuelve a pulsar para invertir el orden.
 

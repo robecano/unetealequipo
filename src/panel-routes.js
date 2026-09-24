@@ -46,7 +46,8 @@ const CATEGORY_SQL = {
 /**
  * Lo que puede ver cada rol: administración (total o de ciudad), todo lo de su ámbito; seguimiento de Equipos,
  * de Bases o de GC, las solicitudes de sus ciudades — Equipos ve a todos, Bases y GC solo a quienes de verdad
- * les toca (courses.needsBases/needsGc).
+ * les toca (courses.needsBases/needsGc). No filtra por borrada o no: eso lo decide cada sitio que lo usa
+ * (visibleApplications/canTouch quieren las vivas; canRestore quiere justo lo contrario).
  */
 function scopeOf(user) {
   if (user.role === 'city_admin' || user.role === 'leader') {
@@ -67,28 +68,40 @@ function roleLeadersOf(role, cityId) {
   return roleLeadersStmt.all(cityId, role);
 }
 
-// Cuántas veces y cuándo se ha contactado (Equipos: cada vez que se pone «contactado»; Bases/GC: cada «Contactar»).
-const SQL_CONTACT_COUNT = (event) => `(SELECT COUNT(*) FROM application_events e WHERE e.application_id = a.id AND e.event = '${event}')`;
-const SQL_CONTACT_LAST = (event) => `(SELECT MAX(e.created_at) FROM application_events e WHERE e.application_id = a.id AND e.event = '${event}')`;
-
 function visibleApplications(user, { status, q, category } = {}, limit = 500) {
   const { where, params } = scopeOf(user);
+  where.push('a.deleted_at IS NULL');
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
   if (category && CATEGORY_SQL[category]) where.push(CATEGORY_SQL[category]);
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.followup_at, a.tenure_months,
-                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id,
-                       ${SQL_CONTACT_COUNT('contactado_bases')} AS bases_contact_count, ${SQL_CONTACT_LAST('contactado_bases')} AS bases_last_contact,
-                       ${SQL_CONTACT_COUNT('contactado_gc')} AS gc_contact_count, ${SQL_CONTACT_LAST('contactado_gc')} AS gc_last_contact,
+                       a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id, a.gc_group_name,
                        ${TEAM_LABEL} AS team, c.name AS city
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
+  // Todas las fechas de cada contacto hecho (no solo la última), agrupadas en una sola consulta para toda la lista.
+  const byApp = new Map();
+  if (rows.length) {
+    const placeholders = rows.map(() => '?').join(',');
+    const evs = db.prepare(`SELECT application_id, event, created_at FROM application_events WHERE application_id IN (${placeholders}) AND event IN ('contactado_bases','contactado_gc') ORDER BY created_at ASC`).all(...rows.map((r) => r.id));
+    for (const e of evs) {
+      if (!byApp.has(e.application_id)) byApp.set(e.application_id, { bases: [], gc: [] });
+      byApp.get(e.application_id)[e.event === 'contactado_bases' ? 'bases' : 'gc'].push(e.created_at);
+    }
+  }
   for (const r of rows) {
     r.contrastado = courses.contrastadoInfo(r);
     // Lo que le falta curso a curso según Planning Center (para la vista propia de seguimiento de Bases/GC)
     r.basesGaps = courses.basesGaps(r);
     r.gcGaps = courses.gcGaps(r);
     r.pco_url = r.pco_person_id ? `https://people.planningcenteronline.com/people/${r.pco_person_id}` : null;
+    const d = byApp.get(r.id) || { bases: [], gc: [] };
+    r.bases_contact_dates = d.bases;
+    r.gc_contact_dates = d.gc;
+    r.bases_contact_count = d.bases.length;
+    r.bases_last_contact = d.bases[d.bases.length - 1] || null;
+    r.gc_contact_count = d.gc.length;
+    r.gc_last_contact = d.gc[d.gc.length - 1] || null;
     // Solo administración (total o de ciudad) ve quién hace seguimiento de cada persona (Equipos siempre; Bases o GC si le toca)
     if (user.role === 'admin' || user.role === 'city_admin') {
       r.leaders = roleLeadersOf('leader', r.city_id);
@@ -99,10 +112,16 @@ function visibleApplications(user, { status, q, category } = {}, limit = 500) {
   return rows;
 }
 
-/** ¿Puede este usuario ver/tocar esta solicitud? Consulta directa por id (no depende del límite de la lista). */
+/** ¿Puede este usuario ver/tocar esta solicitud (viva, no borrada)? Consulta directa por id, sin límite de lista. */
 function canTouch(user, id) {
   const { where, params } = scopeOf(user);
-  return !!db.prepare(`SELECT 1 FROM applications a WHERE a.id = ? ${where.map((w) => `AND ${w}`).join(' ')}`).get(id, ...params);
+  return !!db.prepare(`SELECT 1 FROM applications a WHERE a.id = ? AND a.deleted_at IS NULL ${where.map((w) => `AND ${w}`).join(' ')}`).get(id, ...params);
+}
+
+/** Lo contrario de canTouch: ¿puede este usuario restaurar esta solicitud borrada (dentro de su ámbito)? */
+function canRestore(user, id) {
+  const { where, params } = scopeOf(user);
+  return !!db.prepare(`SELECT 1 FROM applications a WHERE a.id = ? AND a.deleted_at IS NOT NULL ${where.map((w) => `AND ${w}`).join(' ')}`).get(id, ...params);
 }
 
 const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', listo: 'Para contactar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
@@ -126,17 +145,19 @@ function csvCell(v) {
 
 const leadersCell = (list) => (list || []).map((l) => [l.name || l.email, l.phone].filter(Boolean).join(' · ')).join(' / ') || 'Sin seguimiento asignado';
 
+const contactDatesCell = (dates) => (dates || []).map((d) => localDate(d)).join(' / ');
+
 function applicationsCsv(rows, { withLeaders = false } = {}) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
-    'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center',
+    'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión',
     ...(withLeaders ? ['Seguimiento de Equipos', 'Seguimiento de Bases', 'Seguimiento de GC'] : []),
-    'Bases: veces contactada', 'Bases: último contacto', 'GC: veces contactada', 'GC: último contacto',
+    'Bases: veces contactada', 'Bases: fechas de contacto', 'GC: veces contactada', 'GC: fechas de contacto',
     'OK con PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
-    a.pco_url || '',
+    a.pco_url || '', a.gc_group_name || '',
     ...(withLeaders ? [leadersCell(a.leaders), a.basesLeaders ? leadersCell(a.basesLeaders) : '', a.gcLeaders ? leadersCell(a.gcLeaders) : ''] : []),
-    a.bases_contact_count, a.bases_last_contact ? localDate(a.bases_last_contact) : '', a.gc_contact_count, a.gc_last_contact ? localDate(a.gc_last_contact) : '',
+    a.bases_contact_count, contactDatesCell(a.bases_contact_dates), a.gc_contact_count, contactDatesCell(a.gc_contact_dates),
     a.contrastado.label, a.contrastado.guidance || '', a.contrastado.reminder || '', localDate(a.followup_at, false), localDate(a.updated_at)]);
   // Separador «;» y BOM UTF-8: es lo que espera Excel en español para abrirlo directamente con los acentos bien
   return '﻿' + [head, ...lines].map((l) => l.map(csvCell).join(';')).join('\r\n') + '\r\n';
@@ -170,14 +191,56 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ application: fullApp(id), events: db.prepare('SELECT * FROM application_events WHERE application_id = ? ORDER BY id DESC').all(id) });
   });
 
-  /** Borra una solicitud y su historial (administración, o seguimiento de Equipos dentro de su ciudad). */
+  /**
+   * Borra una solicitud (administración, o seguimiento de Equipos dentro de su ciudad). Borrado blando: se
+   * marca `deleted_at` y deja de verse en el panel y en los resúmenes, pero se puede deshacer con
+   * POST /applications/:id/restore (el historial no se toca, así el «deshacer» lo recupera todo tal cual).
+   */
   r.delete('/applications/:id', (req, res) => {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     if (!['admin', 'city_admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para borrar', 403);
-    db.prepare('DELETE FROM applications WHERE id = ?').run(id); // el historial se borra en cascada
-    console.log(`Solicitud ${id} borrada por ${req.user.email}`);
+    db.prepare('UPDATE applications SET deleted_at=?, updated_at=? WHERE id=?').run(now(), now(), id);
+    logEvent(id, req.user.id, 'borrada');
+    console.log(`Solicitud ${id} borrada (blando) por ${req.user.email}`);
     res.json({ ok: true });
+  });
+
+  /** Deshace un borrado (dentro de los mismos permisos que borrar). */
+  r.post('/applications/:id/restore', (req, res) => {
+    const id = Number(req.params.id);
+    if (!canRestore(req.user, id)) throw bad('No encontrada', 404);
+    if (!['admin', 'city_admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para restaurar', 403);
+    db.prepare('UPDATE applications SET deleted_at=NULL, updated_at=? WHERE id=?').run(now(), id);
+    logEvent(id, req.user.id, 'restaurada');
+    res.json({ ok: true });
+  });
+
+  /** Deshace el último «Contactar» (seguimiento de Bases o de GC): quita el contacto más reciente que él mismo marcó. */
+  r.post('/applications/:id/undo-contact', (req, res) => {
+    const id = Number(req.params.id);
+    if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    if (!['bases', 'gc'].includes(req.user.role)) throw bad('Solo seguimiento de Bases o de GC puede deshacer esto', 403);
+    const event = `contactado_${req.user.role}`;
+    const last = db.prepare('SELECT id FROM application_events WHERE application_id = ? AND event = ? ORDER BY id DESC LIMIT 1').get(id, event);
+    if (!last) throw bad('No hay ningún contacto que deshacer');
+    db.prepare('DELETE FROM application_events WHERE id = ?').run(last.id);
+    res.json({ ok: true });
+  });
+
+  /** Deshace el último cambio de estado (Contacté/Visitó/Resolver/No continúa), volviendo al estado anterior. */
+  r.post('/applications/:id/undo-status', (req, res) => {
+    const id = Number(req.params.id);
+    if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    if (!['admin', 'city_admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para deshacer el estado', 403);
+    const last = db.prepare("SELECT id FROM application_events WHERE application_id = ? AND event = 'status' ORDER BY id DESC LIMIT 1").get(id);
+    if (!last) throw bad('No hay ningún cambio de estado que deshacer');
+    db.prepare('DELETE FROM application_events WHERE id = ?').run(last.id);
+    const prev = db.prepare("SELECT detail FROM application_events WHERE application_id = ? AND event = 'status' ORDER BY id DESC LIMIT 1").get(id);
+    const status = prev?.detail && STATUSES.includes(prev.detail) ? prev.detail : 'listo';
+    const followup = status === 'contactado' || status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
+    db.prepare('UPDATE applications SET status=?, followup_at=?, updated_at=? WHERE id=?').run(status, followup, now(), id);
+    res.json({ ok: true, status });
   });
 
   r.patch('/applications/:id', wrap(async (req, res) => {
@@ -323,12 +386,12 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ ok: true });
   });
 
-  // ---------- Emails: un texto por ciudad, y horario del resumen (global) ----------
+  // ---------- Emails: un texto por ciudad, y horario del resumen (también por ciudad) ----------
   const tplView = (key, cityId) => {
     const t = et.getTemplate(key, cityId);
     const def = et.TEMPLATES[key];
     return {
-      key, group: def.group, title: def.title, to: def.to, when: def.when.replace('%HORARIO%', jobs.describeSchedule()), enabled: t.enabled, customized: t.customized, updated_at: t.updated_at || null, updated_by: t.updated_by || '',
+      key, group: def.group, title: def.title, to: def.to, when: def.when.replace('%HORARIO%', jobs.describeSchedule(jobs.digestSchedule(cityId))), enabled: t.enabled, customized: t.customized, updated_at: t.updated_at || null, updated_by: t.updated_by || '',
       subject: t.subject, heading: t.heading, body: t.body, original: { subject: def.subject, heading: def.heading, body: def.body },
       vars: def.vars.map((n) => ({ name: n, desc: et.VARS[n].desc, block: !!et.VARS[n].block })),
       flags: def.flags.map((n) => ({ name: n, desc: et.FLAGS[n] })), required: def.required,
@@ -345,14 +408,14 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     return cityId;
   }
 
-  const scheduleView = () => ({ slots: jobs.digestSchedule(), tz: config.tz });
+  const scheduleView = (cityId) => ({ slots: jobs.digestSchedule(cityId), tz: config.tz });
   admin.get('/emails', (req, res) => {
     const allCities = db.prepare('SELECT * FROM cities ORDER BY name').all();
     const cities = req.user.role === 'admin' ? allCities : allCities.filter((c) => myCityIds(req.user.id).includes(c.id));
     if (!cities.length) throw bad('No tienes ninguna ciudad asignada');
     const reqId = Number(req.query.city_id);
     const cityId = cities.some((c) => c.id === reqId) ? reqId : cities[0].id;
-    res.json({ groups: et.GROUPS, templates: Object.keys(et.TEMPLATES).map((k) => tplView(k, cityId)), schedule: scheduleView(), cities, city_id: cityId });
+    res.json({ groups: et.GROUPS, templates: Object.keys(et.TEMPLATES).map((k) => tplView(k, cityId)), schedule: scheduleView(cityId), cities, city_id: cityId });
   });
 
   admin.put('/emails/:key', (req, res) => {
@@ -403,8 +466,9 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ ok: true, to: req.user.email, sent: !!out.sent });
   }));
 
-  // El horario de los resúmenes es global (no por ciudad): solo lo cambia el administrador total.
-  admin.put('/email-schedule', requireSuperAdmin, (req, res) => {
+  // El horario de los resúmenes es configurable por ciudad: el admin total, cualquiera; el de ciudad, la suya.
+  admin.put('/email-schedule', (req, res) => {
+    const cityId = resolveCityId(req);
     const raw = Array.isArray(req.body?.slots) ? req.body.slots : [];
     const slots = raw.map((s) => ({ day: Number(s.day), hour: Number(s.hour) }));
     if (!slots.length) throw bad('Añade al menos un envío');
@@ -415,8 +479,8 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     }
     const dupe = new Set(slots.map((s) => `${s.day}-${s.hour}`));
     if (dupe.size !== slots.length) throw bad('Hay envíos repetidos (mismo día y hora)');
-    jobs.setDigestSchedule(slots);
-    res.json(scheduleView());
+    jobs.setDigestSchedule(cityId, slots);
+    res.json(scheduleView(cityId));
   });
 
   const userRow = (u) => ({ ...u, city_ids: db.prepare('SELECT city_id FROM user_cities WHERE user_id = ?').all(u.id).map((x) => x.city_id) });

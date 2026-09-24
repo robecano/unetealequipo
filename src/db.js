@@ -218,6 +218,9 @@ if (appCols.includes('bases_user_id')) {
 // Cuándo llamó el líder de Bases o el de GC (null = aún no): así el líder de equipo ve si ya le han contactado.
 try { db.exec('ALTER TABLE applications ADD COLUMN bases_contacted_at TEXT'); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN gc_contacted_at TEXT'); } catch { /* ya existe */ }
+// Nombre real del Grupo de Conexión en Planning Center (si se encuentra), y borrado blando (para poder deshacerlo).
+try { db.exec('ALTER TABLE applications ADD COLUMN gc_group_name TEXT'); } catch { /* ya existe */ }
+try { db.exec('ALTER TABLE applications ADD COLUMN deleted_at TEXT'); } catch { /* ya existe */ }
 
 // El área «Domingo» (o «Operativo», si ya se había renombrado a mano en el panel) pasa a llamarse «Operativos».
 db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name IN ('Domingo', 'Operativo')");
@@ -274,6 +277,36 @@ db.exec(`DELETE FROM email_templates WHERE key IN ('bases_assigned','gc_assigned
 const getSetting = (key) => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null;
 const setSetting = (key, value) =>
   db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value));
+
+/**
+ * Migración: el horario de envío de la lista completa pasa de ser único y global a configurable por ciudad.
+ * Si ya había un horario global (`digest_schedule`) se copia a cada ciudad existente (`digest_schedule:<id>`),
+ * así cada una sigue enviando en el mismo horario que tenía hasta ahora; a partir de ahí puede divergir.
+ * Lo mismo con `digest_fired` (para no repetir un envío ya hecho esa semana). No se borra nada sin copiarlo antes.
+ */
+const globalSchedule = getSetting('digest_schedule');
+if (globalSchedule !== null) {
+  for (const c of db.prepare('SELECT id FROM cities').all()) {
+    if (getSetting(`digest_schedule:${c.id}`) === null) setSetting(`digest_schedule:${c.id}`, globalSchedule);
+  }
+  db.prepare('DELETE FROM settings WHERE key = ?').run('digest_schedule');
+}
+const globalFired = getSetting('digest_fired');
+if (globalFired !== null) {
+  for (const c of db.prepare('SELECT id FROM cities').all()) {
+    if (getSetting(`digest_fired:${c.id}`) === null) setSetting(`digest_fired:${c.id}`, globalFired);
+  }
+  db.prepare('DELETE FROM settings WHERE key = ?').run('digest_fired');
+}
+// Igual con `digest_prev_run` (qué es «nuevo desde el último envío»): se copia para que el primer envío tras
+// esta migración no trate de golpe a todo el mundo como nuevo.
+const globalPrevRun = getSetting('digest_prev_run');
+if (globalPrevRun !== null) {
+  for (const c of db.prepare('SELECT id FROM cities').all()) {
+    if (getSetting(`digest_prev_run:${c.id}`) === null) setSetting(`digest_prev_run:${c.id}`, globalPrevRun);
+  }
+  db.prepare('DELETE FROM settings WHERE key = ?').run('digest_prev_run');
+}
 
 function tx(fn) {
   db.exec('BEGIN');

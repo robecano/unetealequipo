@@ -172,6 +172,27 @@ test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y n
   assert.equal(to('lider@test.es').length, 0, 'refreshCourses no avisa a nadie: solo se ve en el panel y en la lista');
 });
 
+test('gc_group_name: se guarda al procesar y al refrescar (si pco.getGcGroupName lo encuentra), y nunca rompe si no existe esa función', async () => {
+  reset(); person = { id: '901' }; course = { bases1: true, bases2: false, gc: false };
+  const flowSinGc = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course }, mail: { sendMail: async (m) => sent.push(m) } });
+  const idSinGc = apply(av);
+  await flowSinGc.process(idSinGc); // pco.getGcGroupName no existe: no debe romper
+  assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idSinGc).gc_group_name, null);
+
+  let gcName = 'Pablo y Carolina';
+  const flowConGc = createFlow({
+    pco: { findPerson: async () => person, getCourseStatus: async () => course, getGcGroupName: async () => gcName },
+    mail: { sendMail: async (m) => sent.push(m) },
+  });
+  const idConGc = apply(av);
+  await flowConGc.process(idConGc);
+  assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idConGc).gc_group_name, 'Pablo y Carolina');
+
+  gcName = 'Diana y Marlin'; // cambia de grupo: refreshCourses lo actualiza
+  await flowConGc.refreshCourses();
+  assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idConGc).gc_group_name, 'Diana y Marlin');
+});
+
 test('resumen: nuevas, seguimiento y resto se reparten sin solaparse, y todas llevan sus cursos', async () => {
   const c2 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Resumen')").run().lastInsertRowid);
   const t2 = Number(db.prepare("INSERT INTO teams (name) VALUES ('Resumen equipo')").run().lastInsertRowid);

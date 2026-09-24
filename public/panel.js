@@ -25,6 +25,17 @@ const root = $('#root');
 const say = (m) => alert(m);
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { say(e.message); } };
 
+// Aviso flotante con un botón de «Deshacer» (p. ej. tras borrar una solicitud). Vive fuera de #root para
+// sobrevivir a que se repinte la vista al recargar la lista.
+const toastBox = h('div', { class: 'toast-box' });
+document.body.append(toastBox);
+function toast(msg, { actionLabel, onAction, timeout = 8000 } = {}) {
+  const el = h('div', { class: 'toast' }, h('span', {}, msg),
+    actionLabel ? h('button', { class: 'mini', onclick: guard(async () => { await onAction(); el.remove(); }) }, actionLabel) : null);
+  toastBox.append(el);
+  setTimeout(() => el.remove(), timeout);
+}
+
 const STATUS = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', listo: 'Para contactar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
 const ROLE = { admin: 'Administración total', city_admin: 'Admin de ciudad', leader: 'Seguimiento de Equipos', bases: 'Seguimiento de Bases', gc: 'Seguimiento de GC' };
 const TENURE = { 0: '< 6 meses', 6: '6–12 meses', 12: '1–2 años', 24: '> 2 años' };
@@ -73,8 +84,8 @@ function roleGaps(gaps) {
       ? h('span', { class: 'no' }, `${g.label}: actualizar información en PCO contrastándola${g.key === 'gc' ? '' : '. Es posible que le haya faltado marcar la asistencia.'}`)
       : h('span', { class: 'muted' }, `${g.label}: no lo tiene hecho`))));
 }
-/** «Contactada 3 veces · última: 12 sept» o «Aún no contactada», para Bases/GC. */
-const contactSummary = (count, last) => (count ? `Contactada ${count} ${count === 1 ? 'vez' : 'veces'} · última: ${fmtDate(last)}` : 'Aún no contactada');
+/** «Contactada 3 veces: 12 sept, 15 sept, 20 sept» o «Aún no contactada», para Bases/GC: todas las fechas, no solo la última. */
+const contactSummary = (dates) => (dates?.length ? `Contactada ${dates.length} ${dates.length === 1 ? 'vez' : 'veces'}: ${dates.map(fmtDate).join(', ')}` : 'Aún no contactada');
 
 async function applicationsView(box) {
   const q = h('input', { type: 'search', placeholder: 'Buscar nombre, email, teléfono…' });
@@ -116,6 +127,7 @@ async function applicationsView(box) {
       h('tbody', {}, list.map((a) => h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email),
           a.pco_url ? h('br') : null, a.pco_url ? h('a', { href: a.pco_url, target: '_blank', rel: 'noopener' }, 'Perfil PCO') : null,
+          a.gc_group_name ? h('br') : null, a.gc_group_name ? h('span', { class: 'muted' }, `GC: ${a.gc_group_name}`) : null,
           h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
@@ -124,22 +136,27 @@ async function applicationsView(box) {
           isAdminLike && a.basesLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Bases asignado') : null,
           isAdminLike && a.gcLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de GC asignado') : null,
           // Para que quien hace seguimiento de Equipos vea si Bases o GC ya han contactado, sin tener que preguntarles
-          needsBases(a) ? h('div', { class: 'muted' }, 'Bases: ', a.bases_contact_count ? h('span', { class: 'ok' }, contactSummary(a.bases_contact_count, a.bases_last_contact)) : h('span', { class: 'no' }, 'aún no contactada')) : null,
-          needsGc(a) ? h('div', { class: 'muted' }, 'GC: ', a.gc_contact_count ? h('span', { class: 'ok' }, contactSummary(a.gc_contact_count, a.gc_last_contact)) : h('span', { class: 'no' }, 'aún no contactada')) : null),
+          needsBases(a) ? h('div', { class: 'muted' }, 'Bases: ', a.bases_contact_count ? h('span', { class: 'ok' }, contactSummary(a.bases_contact_dates)) : h('span', { class: 'no' }, 'aún no contactada')) : null,
+          needsGc(a) ? h('div', { class: 'muted' }, 'GC: ', a.gc_contact_count ? h('span', { class: 'ok' }, contactSummary(a.gc_contact_dates)) : h('span', { class: 'no' }, 'aún no contactada')) : null),
         course('B1', a.pco_bases1, a.self_bases1), course('GC', a.pco_gc, a.self_gc), course('B2', a.pco_bases2, a.self_bases2),
         isRoleLeader ? roleGaps(a[me.role === 'bases' ? 'basesGaps' : 'gcGaps']) : contrastado(a.contrastado),
         h('td', {}, h('div', { class: 'acts' },
-          // Bases y GC marcan que han contactado (se ve en «Estado»): cada pulsación añade un contacto nuevo, sin deshacer
-          isRoleLeader ? h('div', { class: 'stack' }, act(a.id, { contact: true }, 'Contactar'), h('span', { class: 'muted' }, contactSummary(a[`${me.role}_contact_count`], a[`${me.role}_last_contact`]))) : null,
+          // Bases y GC marcan que han contactado (se ve en «Estado»): cada pulsación añade un contacto nuevo, y se puede deshacer el último
+          isRoleLeader ? h('div', { class: 'stack' },
+            h('div', { class: 'acts' }, act(a.id, { contact: true }, 'Contactar'),
+              a[`${me.role}_contact_count`] ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-contact`, { method: 'POST' }); load(); }) }, 'Deshacer') : null),
+            h('span', { class: 'muted' }, contactSummary(a[`${me.role}_contact_dates`]))) : null,
           // El estado (Contacté/Visitó/Resolver/No continúa) y Borrar los llevan administración y seguimiento de Equipos; Bases y GC solo ven su lista.
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Contacté') : null,
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Resolver') : null,
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'no_continua' }, 'No continúa') : null,
+          canManageStatus && ['contactado', 'visito', 'confirmado', 'no_continua'].includes(a.status) ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-status`, { method: 'POST' }); load(); }) }, 'Deshacer estado') : null,
           canManageStatus ? h('button', { class: 'danger', onclick: guard(async () => {
-            if (!confirm(`¿Borrar la solicitud de ${a.name}?\n\nSe elimina también su historial en esta web. No se puede deshacer.\n(La nota en su perfil de Planning Center no se borra.)`)) return;
+            if (!confirm(`¿Borrar la solicitud de ${a.name}?\n\nDeja de verse en el panel y en los resúmenes; se puede deshacer justo después con el aviso que aparece abajo.\n(La nota en su perfil de Planning Center no se borra.)`)) return;
             await api(`/panel/applications/${a.id}`, { method: 'DELETE' });
             load();
+            toast(`Solicitud de ${a.name} borrada.`, { actionLabel: 'Deshacer', onAction: async () => { await api(`/panel/applications/${a.id}/restore`, { method: 'POST' }); load(); } });
           }) }, 'Borrar') : null,
           isAdminLike && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)))))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
@@ -320,7 +337,7 @@ const GROUP_ICON = { persona: '🙋', lider: '📞', bases: '📚', gc: '🤝', 
 async function emailsView(box) {
   let data = await api('/panel/admin/emails');
   let cityId = data.city_id;
-  const canEditSchedule = me.role === 'admin';
+  const canEditSchedule = ['admin', 'city_admin'].includes(me.role);
   const editor = h('div');
   const listBox = h('div');
 
@@ -329,11 +346,13 @@ async function emailsView(box) {
     cityId = Number(citySelect.value);
     data = await api(`/panel/admin/emails?city_id=${cityId}`);
     editor.replaceChildren();
+    renderSchedule();
     list();
   }));
 
   const slotsBox = h('div', { class: 'stack' });
-  let slots = data.schedule.slots.map((s) => ({ ...s }));
+  let slots = [];
+  const scheduleCard = h('div', { class: 'card stack' });
   const drawSlots = () => {
     slotsBox.replaceChildren(...slots.map((s, i) => h('div', { class: 'toolbar' },
       h('select', { onchange: (e) => { slots[i].day = Number(e.target.value); } }, DAYS.map((d, di) => h('option', { value: di, selected: di === s.day }, d))),
@@ -348,19 +367,24 @@ async function emailsView(box) {
         },
       }, '+ Añadir otro envío'));
   };
-  if (canEditSchedule) drawSlots();
-  const schedule = h('div', { class: 'card stack' },
-    h('h3', {}, 'Cuándo se envían'),
-    h('p', { class: 'muted' }, 'Inmediato: en cuanto alguien se apunta, a la persona. Si Planning Center no responde, se reintenta cada 5 minutos. Nadie recibe un email por cada solicitud: se ve en la lista programada (abajo) y en el panel en todo momento.'),
-    h('p', { class: 'muted' }, `Lista de seguimiento: en los días y horas de abajo (misma hora para todas las ciudades), en hora de ${data.schedule.tz}. Solo se envía a quien tenga alguna solicitud abierta. Antes de cada envío se actualizan los cursos con Planning Center.`),
-    canEditSchedule ? slotsBox : h('p', {}, slots.map((s) => `${DAYS[s.day]} a las ${String(s.hour).padStart(2, '0')}:00`).join(' · ')),
-    canEditSchedule ? h('button', {
-      class: 'btn btn-sm', onclick: guard(async () => {
-        const out = await api('/panel/admin/email-schedule', { method: 'PUT', body: { slots } });
-        slots = out.slots.map((s) => ({ ...s })); drawSlots();
-        say('Horario guardado.');
-      }),
-    }, 'Guardar horario') : null);
+  // El horario también es por ciudad: al cambiar de ciudad se vuelve a pintar con el horario de la que toque ahora.
+  function renderSchedule() {
+    slots = data.schedule.slots.map((s) => ({ ...s }));
+    if (canEditSchedule) drawSlots();
+    scheduleCard.replaceChildren(
+      h('h3', {}, 'Cuándo se envían'),
+      h('p', { class: 'muted' }, 'Inmediato: en cuanto alguien se apunta, a la persona. Si Planning Center no responde, se reintenta cada 5 minutos. Nadie recibe un email por cada solicitud: se ve en la lista programada (abajo) y en el panel en todo momento.'),
+      h('p', { class: 'muted' }, `Lista de seguimiento: en los días y horas de abajo, en hora de ${data.schedule.tz}. Cada ciudad tiene su propio horario. Solo se envía a quien tenga alguna solicitud abierta en esa ciudad. Antes de cada envío se actualizan sus cursos con Planning Center.`),
+      canEditSchedule ? slotsBox : h('p', {}, slots.map((s) => `${DAYS[s.day]} a las ${String(s.hour).padStart(2, '0')}:00`).join(' · ')),
+      canEditSchedule ? h('button', {
+        class: 'btn btn-sm', onclick: guard(async () => {
+          const out = await api(`/panel/admin/email-schedule?city_id=${cityId}`, { method: 'PUT', body: { slots } });
+          slots = out.slots.map((s) => ({ ...s })); drawSlots();
+          say('Horario guardado.');
+        }),
+      }, 'Guardar horario') : null);
+  }
+  renderSchedule();
 
   const open = (t) => {
     const subject = h('input', { name: 'subject', value: t.subject });
@@ -416,7 +440,7 @@ async function emailsView(box) {
       h('button', { class: 'mini', onclick: () => open(t) }, 'Editar')))),
   ]));
   list();
-  box.replaceChildren(h('div', { class: 'toolbar' }, h('label', {}, 'Ciudad', citySelect)), schedule, editor, listBox);
+  box.replaceChildren(h('div', { class: 'toolbar' }, h('label', {}, 'Ciudad', citySelect)), scheduleCard, editor, listBox);
 }
 
 // ---------- Estructura ----------
