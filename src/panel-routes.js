@@ -76,6 +76,7 @@ function visibleApplications(user, { status, q, category } = {}, limit = 500) {
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id, a.gc_group_name,
+                       a.form_bases1, a.form_bases2, a.form_gc,
                        ${TEAM_LABEL} AS team, c.name AS city
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
@@ -150,12 +151,14 @@ const contactDatesCell = (dates) => (dates || []).map((d) => localDate(d)).join(
 function applicationsCsv(rows, { withLeaders = false } = {}) {
   const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión',
+    'Formulario Bases 1', 'Formulario Bases 2', 'Formulario GC',
     ...(withLeaders ? ['Seguimiento de Equipos', 'Seguimiento de Bases', 'Seguimiento de GC'] : []),
     'Bases: veces contactada', 'Bases: fechas de contacto', 'GC: veces contactada', 'GC: fechas de contacto',
     'OK con PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
   const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_url || '', a.gc_group_name || '',
+    yn(a.form_bases1), yn(a.form_bases2), yn(a.form_gc),
     ...(withLeaders ? [leadersCell(a.leaders), a.basesLeaders ? leadersCell(a.basesLeaders) : '', a.gcLeaders ? leadersCell(a.gcLeaders) : ''] : []),
     a.bases_contact_count, contactDatesCell(a.bases_contact_dates), a.gc_contact_count, contactDatesCell(a.gc_contact_dates),
     a.contrastado.label, a.contrastado.guidance || '', a.contrastado.reminder || '', localDate(a.followup_at, false), localDate(a.updated_at)]);

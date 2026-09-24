@@ -76,6 +76,15 @@ function contrastado(c) {
   return h('td', {}, h('span', { class: c.ok ? 'ok' : 'no' }, c.label), !c.ok ? h('div', { class: 'warn-mini' }, c.guidance) : null, c.reminder ? h('div', { class: 'warn-mini' }, c.reminder) : null);
 }
 
+/**
+ * ¿Ha enviado el formulario de registro de ese curso? Solo tiene sentido mirarlo si de verdad le falta ese
+ * curso (si ya lo tiene hecho, da igual); en ese caso se deja en blanco («—»). null = no se sabe (sin ficha).
+ */
+function formCell(submitted, isGap) {
+  if (!isGap || submitted == null) return h('td', { class: 'muted' }, '—');
+  return h('td', {}, mark(!!submitted));
+}
+
 /** Lo que le falta a esta persona según Planning Center, para la vista propia de seguimiento de Bases o de GC: cada curso pendiente, y si es autodeclarado sin confirmar (aviso de actualizar PCO) o falta de verdad. */
 function roleGaps(gaps) {
   if (!gaps?.length) return h('td', {}, h('span', { class: 'ok' }, 'Nada pendiente'));
@@ -96,6 +105,10 @@ async function applicationsView(box) {
   const body = h('div');
   const isRoleLeader = ['bases', 'gc'].includes(me.role);
   const infoHeader = isRoleLeader ? 'Qué le falta' : 'OK con PCO';
+  // Las columnas de formulario solo interesan a quien puede necesitar ese curso: Bases ve las suyas, GC la suya,
+  // y seguimiento de Equipos/administración ven las tres (ellos ven a todos, tengan o no algo pendiente).
+  const showFormBases = ['bases', 'leader', 'admin', 'city_admin'].includes(me.role);
+  const showFormGc = ['gc', 'leader', 'admin', 'city_admin'].includes(me.role);
   let rows = [];
   let sortKey = null, sortDir = 1;
   const SORTERS = {
@@ -123,7 +136,9 @@ async function applicationsView(box) {
     const act = (id, patch, label) => h('button', { onclick: guard(async () => { await api(`/panel/applications/${id}`, { method: 'PATCH', body: patch }); load(); }) }, label);
     const list = sorted();
     body.replaceChildren(list.length ? h('div', { class: 'tablewrap' }, h('table', {},
-      h('thead', {}, h('tr', {}, [th('persona', 'Persona'), th('equipo', 'Equipo'), th('estado', 'Estado'), th('b1', 'B1'), th('gc', 'GC'), th('b2', 'B2'), th('info', infoHeader), th(null, 'Acciones')].filter(Boolean))),
+      h('thead', {}, h('tr', {}, [th('persona', 'Persona'), th('equipo', 'Equipo'), th('estado', 'Estado'), th('b1', 'B1'), th('gc', 'GC'), th('b2', 'B2'),
+        showFormBases ? th(null, 'Form. B1') : null, showFormBases ? th(null, 'Form. B2') : null, showFormGc ? th(null, 'Form. GC') : null,
+        th('info', infoHeader), th(null, 'Acciones')].filter(Boolean))),
       h('tbody', {}, list.map((a) => h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email),
           a.pco_url ? h('br') : null, a.pco_url ? h('a', { href: a.pco_url, target: '_blank', rel: 'noopener' }, 'Perfil PCO') : null,
@@ -139,6 +154,9 @@ async function applicationsView(box) {
           needsBases(a) ? h('div', { class: 'muted' }, 'Bases: ', a.bases_contact_count ? h('span', { class: 'ok' }, contactSummary(a.bases_contact_dates)) : h('span', { class: 'no' }, 'aún no contactada')) : null,
           needsGc(a) ? h('div', { class: 'muted' }, 'GC: ', a.gc_contact_count ? h('span', { class: 'ok' }, contactSummary(a.gc_contact_dates)) : h('span', { class: 'no' }, 'aún no contactada')) : null),
         course('B1', a.pco_bases1, a.self_bases1), course('GC', a.pco_gc, a.self_gc), course('B2', a.pco_bases2, a.self_bases2),
+        showFormBases ? formCell(a.form_bases1, a.basesGaps.some((g) => g.key === 'bases1')) : null,
+        showFormBases ? formCell(a.form_bases2, a.basesGaps.some((g) => g.key === 'bases2')) : null,
+        showFormGc ? formCell(a.form_gc, a.gcGaps.some((g) => g.key === 'gc')) : null,
         isRoleLeader ? roleGaps(a[me.role === 'bases' ? 'basesGaps' : 'gcGaps']) : contrastado(a.contrastado),
         h('td', {}, h('div', { class: 'acts' },
           // Bases y GC marcan que han contactado (se ve en «Estado»): cada pulsación añade un contacto nuevo, y se puede deshacer el último

@@ -54,6 +54,16 @@ function createFlow({ pco, mail }) {
       return null;
     }
   };
+  /** Si ha enviado el formulario de registro de Bases 1/2/GC (ver pco.getFormStatus). Nunca lanza. */
+  const fetchFormStatus = async (personId) => {
+    if (!personId || typeof pco.getFormStatus !== 'function') return { bases1: null, bases2: null, gc: null };
+    try {
+      const s = await pco.getFormStatus(personId);
+      return { bases1: +!!s.bases1, bases2: +!!s.bases2, gc: +!!s.gc };
+    } catch {
+      return { bases1: null, bases2: null, gc: null };
+    }
+  };
   const safeMail = async (id, label, msg, to) => {
     if (msg.enabled === false) return logEvent(id, null, 'email_desactivado', label); // desactivado por el admin en el panel
     try {
@@ -128,6 +138,7 @@ function createFlow({ pco, mail }) {
       return 'recibida'; // el planificador lo reintenta
     }
 
+    const forms = person ? await fetchFormStatus(person.id) : { bases1: null, bases2: null, gc: null };
     setStatus('listo', {
       ready_at: now(),
       followup_at: inDays(FOLLOWUP_DAYS),
@@ -136,6 +147,9 @@ function createFlow({ pco, mail }) {
       pco_bases2: person ? +course.bases2 : null,
       pco_gc: person ? +course.gc : null,
       gc_group_name: person ? await fetchGcGroupName(person.id) : null,
+      form_bases1: forms.bases1,
+      form_bases2: forms.bases2,
+      form_gc: forms.gc,
     });
     const after = fullApp(id); // con los datos recién calculados, para el resto del proceso
     const missing = courses.missing(after);
@@ -183,7 +197,9 @@ function createFlow({ pco, mail }) {
         }
         const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
         const gcGroupName = await fetchGcGroupName(personId);
-        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, updated_at=? WHERE id=?').run(+c.bases1, +c.bases2, +c.gc, gcGroupName, now(), r.id);
+        const forms = await fetchFormStatus(personId);
+        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, form_bases1=?, form_bases2=?, form_gc=?, updated_at=? WHERE id=?')
+          .run(+c.bases1, +c.bases2, +c.gc, gcGroupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
         refreshed++;
       } catch (e) {
         logEvent(r.id, null, 'pco_error', e.message);

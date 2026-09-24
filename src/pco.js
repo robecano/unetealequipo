@@ -195,26 +195,37 @@ async function addNote(personId, text, categoryName) {
   return json.data.id;
 }
 
-// ---------- Formularios de Bases (Planning Center People → Formularios) ----------
-// «Registro Bases 1 …» y «Registro Bases 2 …» (una por ciudad). Se excluyen los de asistencia y los de Bases 3.
-const BASES_FORM = /^\s*Registro Bases [12]\b/i;
-let formCache = { at: 0, ids: null };
+// ---------- Formularios de registro (Bases 1, Bases 2 y GC) ----------
+// «Registro Bases 1 …», «Registro Bases 2 …» y «Registro a Grupos de Conexión …» (uno por ciudad cada uno).
+// Se excluyen los de Bases 3 (liderazgo, no es un paso de este flujo) y los ya archivados.
+const FORM_PATTERNS = {
+  bases1: /^\s*Registro Bases 1\b/i,
+  bases2: /^\s*Registro Bases 2\b/i,
+  gc: /^\s*Registro a Grupos? de Conexi[oó]n\b/i,
+};
+let formIdCache = { at: 0, ids: null };
 
-async function basesFormIds() {
-  if (formCache.ids && Date.now() - formCache.at < 6 * 3600 * 1000) return formCache.ids;
+async function formIdsByCourse() {
+  if (formIdCache.ids && Date.now() - formIdCache.at < 6 * 3600 * 1000) return formIdCache.ids;
   const { data } = await getAll('/people/v2/forms', { per_page: 100 });
-  formCache = { at: Date.now(), ids: new Set(data.filter((f) => BASES_FORM.test(attrs(f).name || '') && !attrs(f).archived_at).map((f) => String(f.id))) };
-  return formCache.ids;
+  const active = data.filter((f) => !attrs(f).archived_at);
+  const ids = {};
+  for (const k of Object.keys(FORM_PATTERNS)) ids[k] = new Set(active.filter((f) => FORM_PATTERNS[k].test(attrs(f).name || '')).map((f) => String(f.id)));
+  formIdCache = { at: Date.now(), ids };
+  return ids;
 }
 
-/** Envíos de la persona a los formularios de registro de Bases 1 y 2: [{ form_id, created_at }] (más recientes primero). */
-async function getBasesFormSubmissions(personId) {
-  const ids = await basesFormIds();
+/**
+ * ¿Ha enviado la persona el formulario de registro de Bases 1, Bases 2 y/o GC? Independiente de si Planning
+ * Center ya ha confirmado el curso (eso tarda: alguien tiene que pasar asistencia o marcar el GC) — sirve para
+ * ver, mientras se espera esa confirmación, si la persona ya se está apuntando por su cuenta.
+ */
+async function getFormStatus(personId) {
+  const ids = await formIdsByCourse();
   const { data } = await getAll(`/people/v2/people/${personId}/form_submissions`, { per_page: 100 });
-  return data
-    .map((d) => ({ form_id: String(d.relationships?.form?.data?.id || ''), created_at: attrs(d).created_at || '' }))
-    .filter((x) => ids.has(x.form_id))
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const submitted = new Set(data.map((d) => String(d.relationships?.form?.data?.id || '')));
+  const has = (k) => [...ids[k]].some((id) => submitted.has(id));
+  return { bases1: has('bases1'), bases2: has('bases2'), gc: has('gc') };
 }
 
 // ---------- Grupo de Conexión (Planning Center Groups) ----------
@@ -259,5 +270,5 @@ async function getGcGroupName(personId) {
 }
 
 module.exports = {
-  getBasesFormSubmissions, BASES_FORM, PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey,
-  getGcGroupName, gcGroupTypeIds };
+  PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey,
+  getGcGroupName, gcGroupTypeIds, getFormStatus };

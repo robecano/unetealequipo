@@ -221,6 +221,11 @@ try { db.exec('ALTER TABLE applications ADD COLUMN gc_contacted_at TEXT'); } cat
 // Nombre real del Grupo de Conexión en Planning Center (si se encuentra), y borrado blando (para poder deshacerlo).
 try { db.exec('ALTER TABLE applications ADD COLUMN gc_group_name TEXT'); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN deleted_at TEXT'); } catch { /* ya existe */ }
+// Si ha enviado el formulario de registro de Bases 1 / Bases 2 / GC (independiente de si Planning Center ya
+// confirma el curso): 1 = sí, 0 = no, NULL = no se sabe (sin ficha en Planning Center todavía).
+try { db.exec('ALTER TABLE applications ADD COLUMN form_bases1 INTEGER'); } catch { /* ya existe */ }
+try { db.exec('ALTER TABLE applications ADD COLUMN form_bases2 INTEGER'); } catch { /* ya existe */ }
+try { db.exec('ALTER TABLE applications ADD COLUMN form_gc INTEGER'); } catch { /* ya existe */ }
 
 // El área «Domingo» (o «Operativo», si ya se había renombrado a mano en el panel) pasa a llamarse «Operativos».
 db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name IN ('Domingo', 'Operativo')");

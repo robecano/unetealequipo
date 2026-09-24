@@ -218,7 +218,7 @@ test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el pan
   db.prepare('UPDATE applications SET self_bases1 = 1, self_gc = 0 WHERE id = ?').run(id);
   const [head, row] = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Orden')).text()).replace(/^﻿/, '').trim().split('\r\n');
   const h = head.split(';'); const v = row.split(';');
-  assert.deepEqual(h.slice(9, 18), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión', 'Seguimiento de Equipos']);
+  assert.deepEqual(h.slice(9, 21), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión', 'Formulario Bases 1', 'Formulario Bases 2', 'Formulario GC', 'Seguimiento de Equipos']);
   assert.deepEqual(v.slice(9, 15), ['Sí', 'No', 'Sí', 'Sí', 'No', 'No']);
   const i = h.indexOf('OK con PCO');
   assert.ok(i > 0);
@@ -226,6 +226,23 @@ test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el pan
   const j = h.indexOf('Recordatorio');
   assert.ok(j > i, 'va después de OK con PCO y su motivo');
   assert.match(v[j], /el paso que le falta/, 'le falta GC, aunque esté contrastado');
+});
+
+test('el Grupo de Conexión real y los formularios de registro se ven en el JSON y en el CSV', async () => {
+  const id = apply('Con Grupo Y Formularios', teamA, { pcoBases1: 1, pcoBases2: 0, pcoGc: 0 });
+  db.prepare("UPDATE applications SET gc_group_name = 'Pablo y Carolina', form_bases1 = 1, form_bases2 = 0, form_gc = 1 WHERE id = ?").run(id);
+  const rows = await (await req('admin', 'GET', '/api/panel/applications?q=Con%20Grupo')).json();
+  const a = rows.find((r) => r.id === id);
+  assert.equal(a.gc_group_name, 'Pablo y Carolina');
+  assert.equal(a.form_bases1, 1);
+  assert.equal(a.form_bases2, 0);
+  assert.equal(a.form_gc, 1);
+  const [head, row] = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Con%20Grupo')).text()).replace(/^﻿/, '').trim().split('\r\n');
+  const h = head.split(';'); const v = row.split(';');
+  assert.equal(v[h.indexOf('Grupo de Conexión')], 'Pablo y Carolina');
+  assert.equal(v[h.indexOf('Formulario Bases 1')], 'Sí');
+  assert.equal(v[h.indexOf('Formulario Bases 2')], 'No');
+  assert.equal(v[h.indexOf('Formulario GC')], 'Sí');
 });
 
 test('el administrador ve quién hace seguimiento de Equipos de cada persona (y si no hay nadie en su ciudad, se le avisa); seguimiento de Equipos no ve ese dato', async () => {

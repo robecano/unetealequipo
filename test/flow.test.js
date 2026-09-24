@@ -193,6 +193,28 @@ test('gc_group_name: se guarda al procesar y al refrescar (si pco.getGcGroupName
   assert.equal(db.prepare('SELECT gc_group_name FROM applications WHERE id=?').get(idConGc).gc_group_name, 'Diana y Marlin');
 });
 
+test('form_bases1/form_bases2/form_gc: se guardan al procesar y al refrescar (si pco.getFormStatus existe), y nunca rompen si no existe esa función', async () => {
+  reset(); person = { id: '902' }; course = { bases1: false, bases2: false, gc: false };
+  const flowSinForms = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course }, mail: { sendMail: async (m) => sent.push(m) } });
+  const idSinForms = apply(av);
+  await flowSinForms.process(idSinForms); // pco.getFormStatus no existe: no debe romper
+  const rowSin = { ...db.prepare('SELECT form_bases1, form_bases2, form_gc FROM applications WHERE id=?').get(idSinForms) };
+  assert.deepEqual(rowSin, { form_bases1: null, form_bases2: null, form_gc: null });
+
+  let forms = { bases1: true, bases2: false, gc: false };
+  const flowConForms = createFlow({
+    pco: { findPerson: async () => person, getCourseStatus: async () => course, getFormStatus: async () => forms },
+    mail: { sendMail: async (m) => sent.push(m) },
+  });
+  const idConForms = apply(av);
+  await flowConForms.process(idConForms);
+  assert.deepEqual({ ...db.prepare('SELECT form_bases1, form_bases2, form_gc FROM applications WHERE id=?').get(idConForms) }, { form_bases1: 1, form_bases2: 0, form_gc: 0 });
+
+  forms = { bases1: true, bases2: true, gc: true }; // envía los que le faltaban: refreshCourses lo actualiza
+  await flowConForms.refreshCourses();
+  assert.deepEqual({ ...db.prepare('SELECT form_bases1, form_bases2, form_gc FROM applications WHERE id=?').get(idConForms) }, { form_bases1: 1, form_bases2: 1, form_gc: 1 });
+});
+
 test('resumen: nuevas, seguimiento y resto se reparten sin solaparse, y todas llevan sus cursos', async () => {
   const c2 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Resumen')").run().lastInsertRowid);
   const t2 = Number(db.prepare("INSERT INTO teams (name) VALUES ('Resumen equipo')").run().lastInsertRowid);
