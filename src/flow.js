@@ -183,7 +183,31 @@ function createFlow({ pco, mail }) {
   }
 
   /**
-   * Mantiene al día los cursos de las solicitudes abiertas (para el resumen y la columna «Contrastado con PCO»):
+   * Refresca los datos de Planning Center de una sola solicitud (enlaza la ficha si no la tenía, Bases 1,
+   * Bases 2, GC —según Planning Center Groups— y los formularios de registro). Lo usan tanto el refresco
+   * periódico (refreshCourses) como el botón «Actualizar Planning Center» del panel, para no duplicar la lógica.
+   * No reenvía ningún aviso ni cambia el estado de la solicitud.
+   */
+  async function refreshOne(r) {
+    let personId = r.pco_person_id;
+    if (!personId) {
+      const found = await pco.findPerson({ email: r.email, phone: r.phone, name: r.name });
+      if (!found) return false;
+      personId = found.id;
+      db.prepare('UPDATE applications SET pco_person_id=?, note_synced=0, notes_done=0, updated_at=? WHERE id=?').run(personId, now(), r.id);
+      logEvent(r.id, null, 'pco_enlazada', `Ya tiene ficha en Planning Center (${personId})`);
+      await writeNotes(r.id);
+    }
+    const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
+    const gcInfo = await fetchGcInfo(personId); // según Planning Center Groups, no el checkbox «GC Asignado»
+    const forms = await fetchFormStatus(personId);
+    db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, form_bases1=?, form_bases2=?, form_gc=?, updated_at=? WHERE id=?')
+      .run(+c.bases1, +c.bases2, gcInfo.inGc, gcInfo.groupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
+    return true;
+  }
+
+  /**
+   * Mantiene al día los cursos de las solicitudes abiertas (para el resumen y la columna «Verificado en PCO»):
    * si a alguien sin ficha le aparece una después (p. ej. porque se registró en Bases), se enlaza y se anotan
    * sus notas; a quien ya tiene ficha se le refresca Bases 1, Bases 2 y GC. No reenvía ningún aviso: el líder ya
    * recibió el suyo al apuntarse, y los cambios se reflejan en el resumen y en el panel.
@@ -193,26 +217,20 @@ function createFlow({ pco, mail }) {
     let refreshed = 0;
     for (const r of rows) {
       try {
-        let personId = r.pco_person_id;
-        if (!personId) {
-          const found = await pco.findPerson({ email: r.email, phone: r.phone, name: r.name });
-          if (!found) continue;
-          personId = found.id;
-          db.prepare('UPDATE applications SET pco_person_id=?, note_synced=0, notes_done=0, updated_at=? WHERE id=?').run(personId, now(), r.id);
-          logEvent(r.id, null, 'pco_enlazada', `Ya tiene ficha en Planning Center (${personId})`);
-          await writeNotes(r.id);
-        }
-        const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
-        const gcInfo = await fetchGcInfo(personId); // según Planning Center Groups, no el checkbox «GC Asignado»
-        const forms = await fetchFormStatus(personId);
-        db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, form_bases1=?, form_bases2=?, form_gc=?, updated_at=? WHERE id=?')
-          .run(+c.bases1, +c.bases2, gcInfo.inGc, gcInfo.groupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
-        refreshed++;
+        if (await refreshOne(r)) refreshed++;
       } catch (e) {
         logEvent(r.id, null, 'pco_error', e.message);
       }
     }
     return refreshed;
+  }
+
+  /** Botón «Actualizar Planning Center» del panel: refresca una sola solicitud, al momento, a petición de quien la ve. */
+  async function refreshApplication(id) {
+    const a = fullApp(id);
+    if (!a) return null;
+    await refreshOne(a);
+    return fullApp(id);
   }
 
   /** Reparte una lista en nuevas desde el último resumen, a quien toca hacer seguimiento y el resto. */
@@ -270,7 +288,7 @@ function createFlow({ pco, mail }) {
     return sent;
   }
 
-  return { process, retryReceived, retryNotes, refreshCourses, sendDigests, sendDigestsForCity };
+  return { process, retryReceived, retryNotes, refreshCourses, refreshApplication, sendDigests, sendDigestsForCity };
 }
 
 module.exports = { createFlow, fullApp, FOLLOWUP_DAYS, OPEN, inDays, now, noteTexts, forTemplate };

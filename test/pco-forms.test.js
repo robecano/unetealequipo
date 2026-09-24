@@ -25,6 +25,13 @@ const submissions = [
   { form: '2', person: '200', at: '2026-09-22T10:00:00Z' },
   { form: '4', person: '300', at: '2026-09-22T10:00:00Z' },
 ];
+// Campos de Bases 1 y Bases 2 (casillas, una por sesión) tal como están en producción: mismo nombre de opción,
+// «Bases 1» con un espacio inicial en el valor (norm() lo recorta igual).
+const fieldDefs = { bases1: '900', bases2: '901' };
+const fieldData = {
+  400: [{ field: 'bases1', value: ' Asistencia Sesión 1' }], // solo una sesión: no debe contar como hecho
+  401: [{ field: 'bases1', value: ' Asistencia Sesión 1' }, { field: 'bases1', value: ' Asistencia Sesión 2' }], // las dos: sí cuenta
+};
 const requests = [];
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -35,6 +42,14 @@ const server = http.createServer((req, res) => {
   if ((m = url.pathname.match(/^\/people\/v2\/people\/(\d+)\/form_submissions$/))) {
     const rows = submissions.filter((s) => s.person === m[1]).sort((a, b) => b.at.localeCompare(a.at));
     return send(200, { data: rows.map((s, i) => ({ type: 'FormSubmission', id: `${s.form}-${i}`, attributes: { created_at: s.at }, relationships: { form: { data: { type: 'Form', id: s.form } } } })) });
+  }
+  if (url.pathname === '/people/v2/field_definitions') return send(200, { data: [
+    { type: 'FieldDefinition', id: fieldDefs.bases1, attributes: { name: 'Bases 1' } },
+    { type: 'FieldDefinition', id: fieldDefs.bases2, attributes: { name: 'Bases 2' } },
+  ] });
+  if ((m = url.pathname.match(/^\/people\/v2\/people\/(\d+)\/field_data$/))) {
+    const rows = fieldData[m[1]] || [];
+    return send(200, { data: rows.map((r, i) => ({ type: 'FieldDatum', id: `${m[1]}-${i}`, attributes: { value: r.value }, relationships: { field_definition: { data: { type: 'FieldDefinition', id: fieldDefs[r.field] } } } })) });
   }
   if (url.pathname === '/groups/v2/group_types') return send(200, { data: [{ type: 'GroupType', id: '10', attributes: { name: 'Grupo de Conexión BCN' } }] });
   if (url.pathname === '/groups/v2/people/100/memberships') return send(200, { data: [{ type: 'Membership', id: 'm1', attributes: { joined_at: '2026-09-23T00:00:00Z' }, relationships: { group: { data: { type: 'Group', id: '77' } } } }] });
@@ -60,4 +75,12 @@ test('getGcInfo: membresía activa en un grupo de tipo «Grupo de Conexión»', 
   const pco = require('../src/pco');
   assert.deepEqual(await pco.getGcInfo('100'), { inGc: true, groupName: 'Pablo y Carolina' });
   assert.deepEqual(await pco.getGcInfo('200'), { inGc: false, groupName: null });
+});
+
+test('getCourseStatus: Bases 1 (igual que Bases 2) solo cuenta hecho con las dos sesiones marcadas, una sola no basta', async () => {
+  const pco = require('../src/pco');
+  const config = require('../src/config');
+  const opts = { fields: config.fields, required: config.required };
+  assert.equal((await pco.getCourseStatus('400', opts)).bases1, false, 'una sola sesión no cuenta');
+  assert.equal((await pco.getCourseStatus('401', opts)).bases1, true, 'las dos sesiones sí cuentan');
 });

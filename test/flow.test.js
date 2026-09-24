@@ -173,6 +173,18 @@ test('refreshCourses: enlaza la ficha si aparece más tarde, anota las notas y n
   assert.equal(to('lider@test.es').length, 0, 'refreshCourses no avisa a nadie: solo se ve en el panel y en la lista');
 });
 
+test('refreshApplication: actualiza una sola solicitud al momento (botón «Actualizar Planning Center»), sin avisar a nadie', async () => {
+  reset(); person = { id: '910', url: 'https://pco/910' }; course = { bases1: true, bases2: true, gc: true };
+  const id = apply(av);
+  await flow.process(id);
+  reset(); course = { bases1: true, bases2: false, gc: true }; // ahora falta Bases 2
+  const updated = await flow.refreshApplication(id);
+  assert.equal(updated.pco_bases2, 0);
+  assert.equal(db.prepare('SELECT pco_bases2 FROM applications WHERE id=?').get(id).pco_bases2, 0);
+  assert.equal(sent.length, 0, 'no reenvía ningún aviso, solo actualiza el dato');
+  assert.equal(await flow.refreshApplication(999999), null, 'solicitud inexistente: no rompe, devuelve null');
+});
+
 test('el GC (pco_gc y gc_group_name) viene de pco.getGcInfo (Planning Center Groups), no del checkbox de getCourseStatus, y nunca rompe si no existe esa función', async () => {
   reset(); person = { id: '901' }; course = { bases1: true, bases2: false };
   const flowSinGc = createFlow({ pco: { findPerson: async () => person, getCourseStatus: async () => course }, mail: { sendMail: async (m) => sent.push(m) } });

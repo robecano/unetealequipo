@@ -45,6 +45,8 @@ Si haces **seguimiento de Equipos o eres administración**, en su lugar ves si l
 
 Si le falta algo de verdad, verás también ahí un recordatorio para que lo complete antes de empezar a servir, aunque ponga «Sí» (contrastado y completo son cosas distintas).
 
+Bases 1 y Bases 2 solo cuentan como hechos en Planning Center si constan **las dos sesiones de asistencia** marcadas (no basta con una).
+
 ## «Formulario ✓» / «Sin formulario» bajo B1, GC o B2
 Cuando a la persona le falta un curso (según Planning Center), justo debajo del ✗ verás si **ya ha enviado el formulario de registro** de ese paso (hillsong.es/bases o hillsong.es/gc) — independiente de que Planning Center todavía no confirme el curso, porque eso tarda: alguien tiene que pasar asistencia o marcar el GC. Te sirve para saber si ya se está apuntando o si hace falta animarla a hacerlo. Si ya tiene el curso hecho no se muestra nada ahí, y seguimiento de Bases solo lo ve bajo B1/B2, seguimiento de GC solo bajo GC.
 
@@ -55,6 +57,7 @@ Cuando a la persona le falta un curso (según Planning Center), justo debajo del
 - **Deshacer** (junto a Contactar, o «Deshacer estado» junto a los botones de estado): quita el último contacto o el último cambio de estado que marcaste, por si te equivocas.
 - **Contacté / Visitó / Resolver / No continúa** (seguimiento de Equipos y administración): avanza el estado de la solicitud.
 - **Borrar** (solo seguimiento de Equipos y administración): quita una solicitud de la lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial). Se puede deshacer justo después con el aviso que aparece abajo.
+- **Actualizar Planning Center**: vuelve a comprobar Bases 1, Bases 2, GC y los formularios al momento, sin esperar a la próxima lista — útil justo después de llamar, para ver si ya se ha actualizado. Disponible para cualquiera que vea la solicitud.
 - **Exportar CSV:** descarga tu lista.
 - **Cabeceras de la tabla:** pulsa cualquiera (Persona, Equipo, Estado…) para ordenar la lista por esa columna; vuelve a pulsar para invertir el orden.
 

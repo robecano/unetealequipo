@@ -129,6 +129,18 @@ test('borrar: el admin puede, y seguimiento de Equipos dentro de su ciudad (de c
   assert.equal(sinSesion.status, 401);
 });
 
+test('«Actualizar Planning Center»: respeta el mismo ámbito que ver la solicitud (canTouch); sin PCO configurado en las pruebas, no rompe el servidor', async () => {
+  const mine = apply('Para Actualizar', teamA);
+  const otraCiudad = apply('Otra Ciudad Actualizar', teamA, { city: other });
+  assert.equal((await req('leader', 'POST', `/api/panel/applications/${otraCiudad}/refresh-pco`)).status, 404, 'otra ciudad: no se ve');
+  // Sin PCO_APP_ID/PCO_SECRET en las pruebas, la llamada real a Planning Center falla, pero el servidor responde
+  // con un error controlado (500) en vez de caerse; la comprobación de permisos ya pasó (llegó a intentarlo).
+  const r = await req('leader', 'POST', `/api/panel/applications/${mine}/refresh-pco`);
+  assert.equal(r.status, 500);
+  const sinSesion = await fetch(base + `/api/panel/applications/${mine}/refresh-pco`, { method: 'POST' });
+  assert.equal(sinSesion.status, 401);
+});
+
 test('deshacer un «Contactar» de Bases/GC, y deshacer un cambio de estado', async () => {
   const cUndo = Number(db.prepare("INSERT INTO cities (name) VALUES ('Deshacer')").run().lastInsertRowid);
   const tUndo = Number(db.prepare("INSERT INTO teams (name) VALUES ('Deshacer equipo')").run().lastInsertRowid);

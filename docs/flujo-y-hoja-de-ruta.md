@@ -15,7 +15,7 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
 ## 2. Flujo, paso a paso
 1. **La persona se apunta** en la web: nombre, email, teléfono, ciudad, equipo, cuánto tiempo lleva en la iglesia, y si tiene Bases 1, GC y Bases 2.
 2. **Tiempo mínimo.** Si el equipo lo exige (Kids 12 meses, Cuidado Pastoral 24) y no llega, recibe un email explicándolo y no se avisa a nadie más.
-3. **Se busca en Planning Center** por email y teléfono (con desempate por nombre si hay duplicados) y se leen sus cursos: Bases 1, Bases 2 (sesiones 1 y 2) de sus campos personalizados, y GC comprobando su membresía real en Planning Center Groups (un grupo activo de tipo Grupo de Conexión de su campus, no un checkbox de la ficha que se puede quedar desactualizado).
+3. **Se busca en Planning Center** por email y teléfono (con desempate por nombre si hay duplicados) y se leen sus cursos: Bases 1 y Bases 2 de sus campos personalizados (cuentan como hechos solo con las dos sesiones de asistencia marcadas, no basta con una), y GC comprobando su membresía real en Planning Center Groups (un grupo activo de tipo Grupo de Conexión de su campus, no un checkbox de la ficha que se puede quedar desactualizado).
    - Lo que la persona **declara** en el formulario cuenta como hecho aunque no conste en Planning Center.
    - **Sin ficha en Planning Center = como si no tuviera nada** (se trata igual, y se ve marcado en «Contrastado con PCO»).
 4. **Notas en su perfil de Planning Center** (categoría «Interesado en servir»): interés en servir en el equipo y, si procede, lo que dijo tener y no consta.
@@ -53,7 +53,7 @@ Todos reciben su lista completa dos veces por semana (con los cursos y el contra
 2. **Domingo:** lo recibe y le enseña el equipo → **Visitó**.
 3. **La semana siguiente:** segunda llamada para consolidar.
 4. **Resolver** (queda anotado en su perfil de Planning Center) o **No continúa**.
-5. Puede **borrar** solicitudes de su ciudad (se puede deshacer justo después) y **deshacer** el último cambio de estado.
+5. Puede **borrar** solicitudes de su ciudad (se puede deshacer justo después) y **deshacer** el último cambio de estado. El botón **Actualizar Planning Center** vuelve a comprobar los cursos de una solicitud al momento, sin esperar al refresco periódico.
 
 **Seguimiento de Bases** (ve, en toda su ciudad, a quien le falte Bases 1 o Bases 2 según Planning Center): llama para invitarle a apuntarse y pulsa **Contactar** para marcarlo — cada pulsación añade un contacto nuevo con su fecha (con un **Deshacer** al lado por si se equivoca), así seguimiento de Equipos ve todas las fechas, sin tener que preguntar. En vez de «Verificado en PCO» ve una columna **«Qué le falta»**, curso a curso: si de verdad no lo tiene, o si lo autodeclaró y Planning Center no lo confirma (aviso de actualizar el dato, con la nota de que puede que le faltara marcar la asistencia). No cambia el estado general de la solicitud ni puede borrarla (eso lo lleva seguimiento de Equipos o administración), pero sí puede dejar un comentario.
 

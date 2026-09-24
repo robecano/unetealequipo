@@ -167,6 +167,8 @@ async function applicationsView(box) {
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'confirmado' }, 'Resolver') : null,
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'no_continua' }, 'No continúa') : null,
           canManageStatus && ['contactado', 'visito', 'confirmado', 'no_continua'].includes(a.status) ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-status`, { method: 'POST' }); load(); }) }, 'Deshacer estado') : null,
+          // Vuelve a comprobar Bases 1, Bases 2, GC y los formularios en Planning Center al momento, sin esperar al refresco periódico. Para cualquiera que vea la solicitud.
+          !['recibida', 'no_apto_aun'].includes(a.status) ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/refresh-pco`, { method: 'POST' }); load(); }) }, 'Actualizar Planning Center') : null,
           canManageStatus ? h('button', { class: 'danger', onclick: guard(async () => {
             if (!confirm(`¿Borrar la solicitud de ${a.name}?\n\nDeja de verse en el panel y en los resúmenes; se puede deshacer justo después con el aviso que aparece abajo.\n(La nota en su perfil de Planning Center no se borra.)`)) return;
             await api(`/panel/applications/${a.id}`, { method: 'DELETE' });

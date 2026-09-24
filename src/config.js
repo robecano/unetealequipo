@@ -35,7 +35,9 @@ const config = {
     gc: process.env.FIELD_GC || 'GC Asignado',
   },
   required: {
-    bases1: list(process.env.BASES1_REQUIRED),
+    // Bases 1 y Bases 2 son campos de casillas con una por sesión: solo cuentan como hechos si están marcadas
+    // las dos (asistió a las dos clases), no basta con una.
+    bases1: process.env.BASES1_REQUIRED === undefined ? ['Asistencia Sesión 1', 'Asistencia Sesión 2'] : list(process.env.BASES1_REQUIRED),
     bases2: process.env.BASES2_REQUIRED === undefined ? ['Asistencia Sesión 1', 'Asistencia Sesión 2'] : list(process.env.BASES2_REQUIRED),
     gc: [],
   },

@@ -195,6 +195,19 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   });
 
   /**
+   * «Actualizar Planning Center»: vuelve a comprobar Bases 1, Bases 2, GC (membresía real en Planning Center
+   * Groups) y los formularios de registro de esta solicitud, al momento — sin esperar al refresco periódico de
+   * antes de cada lista. No cambia el estado ni reenvía ningún aviso. Disponible para cualquiera que ya vea
+   * esta solicitud (Equipos, Bases, GC o administración): a todos les sirve saber si ya se ha actualizado.
+   */
+  r.post('/applications/:id/refresh-pco', wrap(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    const application = await flow.refreshApplication(id);
+    res.json({ ok: true, application });
+  }));
+
+  /**
    * Borra una solicitud (administración, o seguimiento de Equipos dentro de su ciudad). Borrado blando: se
    * marca `deleted_at` y deja de verse en el panel y en los resúmenes, pero se puede deshacer con
    * POST /applications/:id/restore (el historial no se toca, así el «deshacer» lo recupera todo tal cual).
