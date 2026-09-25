@@ -108,6 +108,13 @@ async function applicationsView(box) {
   // y seguimiento de Equipos/administración ven las tres (ellos ven a todos, tengan o no algo pendiente).
   const showFormBases = ['bases', 'leader', 'admin', 'city_admin'].includes(me.role);
   const showFormGc = ['gc', 'leader', 'admin', 'city_admin'].includes(me.role);
+  // Equipos y administración pueden marcar «Contactar» de Bases y de GC (por si no hay nadie asignado a ese
+  // rol) y cambiar el equipo de la solicitud; para eso necesitan el catálogo de equipos elegibles por ciudad.
+  let teamOptions = [];
+  if (canManageStatus) {
+    const pub = await api('/public');
+    teamOptions = pub.areas.flatMap((ar) => ar.teams.map((t) => ({ id: t.id, label: t.id === ar.id || t.name === ar.name ? t.name : `${ar.name} › ${t.name}`, city_ids: t.city_ids })));
+  }
   let rows = [];
   let sortKey = null, sortDir = 1;
   const SORTERS = {
@@ -137,12 +144,27 @@ async function applicationsView(box) {
     body.replaceChildren(list.length ? h('div', { class: 'tablewrap' }, h('table', {},
       h('thead', {}, h('tr', {}, [th('persona', 'Persona'), th('equipo', 'Equipo'), th('estado', 'Estado'), th('b1', 'B1'), th('gc', 'GC'), th('b2', 'B2'),
         th('info', infoHeader), th(null, 'Acciones')].filter(Boolean))),
-      h('tbody', {}, list.map((a) => h('tr', {},
+      h('tbody', {}, list.map((a) => {
+        // Cambiar de equipo (Equipos y administración): un desplegable con los equipos disponibles en su ciudad, que sustituye al botón al abrirse.
+        const teamEditBox = h('div');
+        const openTeamEditor = () => {
+          const eligible = teamOptions.filter((t) => !t.city_ids.length || t.city_ids.includes(a.city_id));
+          const sel = h('select', {}, eligible.map((t) => h('option', { value: t.id, selected: t.id === a.team_id }, t.label)));
+          teamEditBox.replaceChildren(h('div', { class: 'acts' }, sel,
+            h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { team_id: Number(sel.value) } }); load(); }) }, 'Guardar'),
+            h('button', { class: 'mini', onclick: () => teamEditBox.replaceChildren() }, 'Cancelar')));
+        };
+        // Marcar «Contactar» de Bases y/o de GC (Equipos y administración, por si no hay nadie asignado a ese rol)
+        const contactBlock = (kind, label, needs) => (canManageStatus && needs(a) ? h('div', { class: 'acts' },
+          h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { contact: kind } }); load(); }) }, `Contactar (${label})`),
+          a[`${kind}_contact_count`] ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-contact`, { method: 'POST', body: { type: kind } }); load(); }) }, 'Deshacer') : null) : null);
+        return h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email),
           a.pco_url ? h('br') : null, a.pco_url ? h('a', { href: a.pco_url, target: '_blank', rel: 'noopener' }, 'Perfil PCO') : null,
           a.gc_group_name ? h('br') : null, a.gc_group_name ? h('span', { class: 'muted' }, `GC: ${a.gc_group_name}`) : null,
           h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
-        h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city)),
+        h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city),
+          canManageStatus ? h('br') : null, canManageStatus ? h('button', { class: 'mini', onclick: openTeamEditor }, 'Cambiar equipo') : null, teamEditBox),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
           // Solo administración (total o de ciudad): si falta asignar seguimiento de Equipos, de Bases o de GC
           isAdminLike && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Equipo asignado') : null,
@@ -161,6 +183,9 @@ async function applicationsView(box) {
             h('div', { class: 'acts' }, act(a.id, { contact: true }, 'Contactar'),
               a[`${me.role}_contact_count`] ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-contact`, { method: 'POST' }); load(); }) }, 'Deshacer') : null),
             h('span', { class: 'muted' }, contactSummary(a[`${me.role}_contact_dates`]))) : null,
+          // Equipos y administración pueden marcar «Contactar» de Bases y/o de GC por su cuenta (p. ej. si no hay nadie asignado a ese rol)
+          contactBlock('bases', 'Bases', needsBases),
+          contactBlock('gc', 'GC', needsGc),
           // El estado (Contacté/Visitó/Resolver/No continúa) y Borrar los llevan administración y seguimiento de Equipos; Bases y GC solo ven su lista.
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'contactado' }, 'Contacté') : null,
           canManageStatus && ['listo', 'contactado', 'visito'].includes(a.status) ? act(a.id, { status: 'visito' }, 'Visitó') : null,
@@ -175,7 +200,8 @@ async function applicationsView(box) {
             load();
             toast(`Solicitud de ${a.name} borrada.`, { actionLabel: 'Deshacer', onAction: async () => { await api(`/panel/applications/${a.id}/restore`, { method: 'POST' }); load(); } });
           }) }, 'Borrar') : null,
-          isAdminLike && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)))))))
+          isAdminLike && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)));
+      }))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
   };
   // Evita que una respuesta lenta de un filtro anterior sobreescriba la de uno más reciente (dos load() casi seguidos, p. ej. al cambiar dos filtros a la vez)

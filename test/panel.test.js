@@ -158,9 +158,10 @@ test('deshacer un «Contactar» de Bases/GC, y deshacer un cambio de estado', as
   assert.equal((await req('basesUndo', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 200);
   assert.equal((await req('basesUndo', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 200);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM application_events WHERE application_id=? AND event='contactado_bases'").get(id).n, 2);
-  assert.equal((await req('leaderUndo', 'POST', `/api/panel/applications/${id}/undo-contact`)).status, 403, 'ni Equipos ni admin pueden deshacer un contacto de Bases/GC');
+  assert.equal((await req('leaderUndo', 'POST', `/api/panel/applications/${id}/undo-contact`)).status, 400, 'Equipos y admin también pueden, pero deben indicar qué contacto (Bases o GC)');
   assert.equal((await req('gcUndo', 'POST', `/api/panel/applications/${id}/undo-contact`)).status, 400, 'GC no tiene ningún contacto propio que deshacer aquí (esto era de Bases)');
-  assert.equal((await req('basesUndo', 'POST', `/api/panel/applications/${id}/undo-contact`)).status, 200);
+  assert.equal((await req('leaderUndo', 'POST', `/api/panel/applications/${id}/undo-contact`, { type: 'gc' })).status, 400, 'tampoco hay contacto de GC que deshacer');
+  assert.equal((await req('leaderUndo', 'POST', `/api/panel/applications/${id}/undo-contact`, { type: 'bases' })).status, 200, 'Equipos deshace un contacto de Bases indicando el tipo');
   assert.equal(db.prepare("SELECT COUNT(*) n FROM application_events WHERE application_id=? AND event='contactado_bases'").get(id).n, 1, 'quita solo el más reciente');
   assert.equal((await req('basesUndo', 'POST', `/api/panel/applications/${id}/undo-contact`)).status, 200);
   assert.equal((await req('basesUndo', 'POST', `/api/panel/applications/${id}/undo-contact`)).status, 400, 'no hay más que deshacer');
@@ -174,6 +175,35 @@ test('deshacer un «Contactar» de Bases/GC, y deshacer un cambio de estado', as
   assert.equal((await req('leaderUndo', 'POST', `/api/panel/applications/${id}/undo-status`)).status, 200);
   assert.equal(db.prepare('SELECT status FROM applications WHERE id=?').get(id).status, 'listo', 'sin más cambios previos, vuelve a "listo"');
   assert.equal((await req('leaderUndo', 'POST', `/api/panel/applications/${id}/undo-status`)).status, 400, 'no hay más que deshacer');
+});
+
+test('cambiar de equipo: administración y seguimiento de Equipos pueden, a otro disponible en la misma ciudad; Bases y GC no pueden', async () => {
+  const cTeam = Number(db.prepare("INSERT INTO cities (name) VALUES ('Cambiar Equipo')").run().lastInsertRowid);
+  const tOrigen = Number(db.prepare("INSERT INTO teams (name) VALUES ('Origen')").run().lastInsertRowid);
+  const tDestino = Number(db.prepare("INSERT INTO teams (name) VALUES ('Destino')").run().lastInsertRowid);
+  const lTeam = Number(db.prepare("INSERT INTO users (email, role) VALUES ('leader-team@test.es', 'leader')").run().lastInsertRowid);
+  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lTeam, cTeam);
+  await login('leaderTeam', 'leader-team@test.es', 'HillsongEspana');
+  const rBasesTeam = await req('admin', 'POST', '/api/panel/admin/users', { email: 'bases-team@test.es', name: 'Bea Team', role: 'bases', phone: '', city_ids: [cTeam] });
+  assert.equal(rBasesTeam.status, 200);
+  await login('basesTeam', 'bases-team@test.es', 'HillsongEspana');
+
+  const id = apply('Cambia Equipo', tOrigen, { city: cTeam, pcoBases1: 0, pcoBases2: 0 });
+  assert.equal((await req('basesTeam', 'PATCH', `/api/panel/applications/${id}`, { team_id: tDestino })).status, 403, 'Bases no puede cambiar el equipo');
+  const r = await req('leaderTeam', 'PATCH', `/api/panel/applications/${id}`, { team_id: tDestino });
+  assert.equal(r.status, 200);
+  assert.equal(db.prepare('SELECT team_id FROM applications WHERE id=?').get(id).team_id, tDestino);
+  assert.match(db.prepare("SELECT detail FROM application_events WHERE application_id=? AND event='equipo' ORDER BY id DESC LIMIT 1").get(id).detail, /Origen.*Destino/);
+
+  // Un equipo restringido a otra ciudad no es válido para esta solicitud
+  const soloOtraCiudad = Number(db.prepare("INSERT INTO teams (name) VALUES ('Solo Valencia')").run().lastInsertRowid);
+  db.prepare('INSERT INTO team_cities VALUES (?,?)').run(soloOtraCiudad, other);
+  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { team_id: soloOtraCiudad })).status, 400);
+  assert.equal(db.prepare('SELECT team_id FROM applications WHERE id=?').get(id).team_id, tDestino, 'no cambia si el equipo no es válido');
+
+  // admin total también puede
+  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { team_id: tOrigen })).status, 200);
+  assert.equal(db.prepare('SELECT team_id FROM applications WHERE id=?').get(id).team_id, tOrigen);
 });
 
 test('seguimiento de Equipos puede marcar el estado de cualquier solicitud de su ciudad (de cualquier equipo), pero no la de otra ciudad', async () => {
@@ -375,7 +405,7 @@ test('Bases y GC no pueden cambiar el estado ni borrar (solo el líder de equipo
   assert.ok(db.prepare('SELECT 1 FROM applications WHERE id = ?').get(id), 'sigue existiendo');
 });
 
-test('Bases y GC marcan que han contactado (cada pulsación añade un contacto, sin deshacer); seguimiento de Equipos lo ve, y ni él ni admin pueden marcarlo por ellos', async () => {
+test('Bases y GC marcan que han contactado (cada pulsación añade un contacto); admin y seguimiento de Equipos también pueden, indicando de cuál se trata', async () => {
   const id = apply('Marcar Contacto', teamA, { pcoBases1: 0, pcoBases2: 0, pcoGc: 0 });
   const before = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
   assert.equal(before.bases_contact_count, 0);
@@ -386,10 +416,13 @@ test('Bases y GC marcan que han contactado (cada pulsación añade un contacto, 
   const after1 = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
   assert.equal(after1.bases_contact_count, 1);
   assert.ok(after1.bases_last_contact);
-  // ni admin ni seguimiento de Equipos pueden marcarlo por Bases o GC
-  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 403);
-  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 403);
-  // cada pulsación añade un contacto nuevo: no hay «deshacer»
+  // admin y seguimiento de Equipos ahora también pueden marcarlo por Bases o GC, pero deben indicar cuál (no basta con `true`)
+  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 400);
+  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { contact: true })).status, 400);
+  assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { contact: 'gc' })).status, 200);
+  const afterAdmin = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
+  assert.equal(afterAdmin.gc_contact_count, 1, 'el contacto de GC marcado por admin también cuenta');
+  // cada pulsación añade un contacto nuevo: no hay «deshacer» sin más (hace falta el botón de deshacer)
   await req('bases', 'PATCH', `/api/panel/applications/${id}`, { contact: true });
   const after2 = (await (await req('leader', 'GET', '/api/panel/applications')).json()).find((x) => x.id === id);
   assert.equal(after2.bases_contact_count, 2);

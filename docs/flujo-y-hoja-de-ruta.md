@@ -6,9 +6,9 @@ Web: **equipos.iglesiahillsong.com** · Panel: **equipos.iglesiahillsong.com/pan
 | Figura | Qué hace |
 |---|---|
 | **Persona** | Se apunta a servir en un equipo. |
-| **Admin total** | Ve y gestiona todo, sin restricción: ciudades, equipos, usuarios y emails (texto y horario) de cualquier ciudad. |
-| **Admin de ciudad** | Como el admin total, pero limitado a su ciudad: ve y toca sus solicitudes; gestiona equipos (cualquier campo, pero en ciudades solo puede tocar la suya); da de alta y gestiona seguimiento de Equipos/Bases/GC de su ciudad; edita los emails de su ciudad, texto y horario. No crea ciudades. |
-| **Seguimiento de Equipos** | Uno o varios por ciudad. Ve todas las solicitudes de su ciudad en su lista programada y en el panel, de cualquier equipo, tengan o no completados Bases 1, Bases 2 y GC. Llama, invita a visitar el equipo el domingo y hace seguimiento. |
+| **Admin total** | Ve y gestiona todo, sin restricción: ciudades, equipos, usuarios y emails (texto y horario) de cualquier ciudad. También tiene las opciones de seguimiento de Equipos, de Bases y de GC en cualquier solicitud (Contactar de Bases/GC, cambiar el estado, cambiar de equipo). |
+| **Admin de ciudad** | Como el admin total, pero limitado a su ciudad: ve y toca sus solicitudes; gestiona equipos (cualquier campo, pero en ciudades solo puede tocar la suya); da de alta y gestiona seguimiento de Equipos/Bases/GC de su ciudad; edita los emails de su ciudad, texto y horario. También tiene las opciones de seguimiento de Equipos, de Bases y de GC dentro de su ciudad. No crea ciudades. |
+| **Seguimiento de Equipos** | Uno o varios por ciudad. Ve todas las solicitudes de su ciudad en su lista programada y en el panel, de cualquier equipo, tengan o no completados Bases 1, Bases 2 y GC. Llama, invita a visitar el equipo el domingo y hace seguimiento. También puede marcar «Contactar» de Bases y de GC (si no hay nadie asignado a ese rol) y cambiar de equipo a una solicitud. |
 | **Seguimiento de Bases** | Uno o varios por ciudad (para cualquier equipo). Llama a quien le falte Bases 1 o Bases 2 para invitarle a apuntarse. |
 | **Seguimiento de GC** | Uno o varios por ciudad (para cualquier equipo). Llama a quien ya tenga Bases 1 y le falte un Grupo de Conexión, para ofrecérselo. |
 
@@ -53,7 +53,7 @@ Todos reciben su lista completa dos veces por semana (con los cursos y el contra
 2. **Domingo:** lo recibe y le enseña el equipo → **Visitó**.
 3. **La semana siguiente:** segunda llamada para consolidar.
 4. **Resolver** (queda anotado en su perfil de Planning Center) o **No continúa**.
-5. Puede **borrar** solicitudes de su ciudad (se puede deshacer justo después) y **deshacer** el último cambio de estado. El botón **Actualizar Planning Center** vuelve a comprobar los cursos de una solicitud al momento, sin esperar al refresco periódico.
+5. Puede **borrar** solicitudes de su ciudad (se puede deshacer justo después) y **deshacer** el último cambio de estado. El botón **Actualizar Planning Center** vuelve a comprobar los cursos de una solicitud al momento, sin esperar al refresco periódico. También puede **cambiar de equipo** a una solicitud (a otro disponible en su ciudad) y marcar **Contactar** de Bases y de GC si hace falta.
 
 **Seguimiento de Bases** (ve, en toda su ciudad, a quien le falte Bases 1 o Bases 2 según Planning Center): llama para invitarle a apuntarse y pulsa **Contactar** para marcarlo — cada pulsación añade un contacto nuevo con su fecha (con un **Deshacer** al lado por si se equivoca), así seguimiento de Equipos ve todas las fechas, sin tener que preguntar. En vez de «Verificado en PCO» ve una columna **«Qué le falta»**, curso a curso: si de verdad no lo tiene, o si lo autodeclaró y Planning Center no lo confirma (aviso de actualizar el dato, con la nota de que puede que le faltara marcar la asistencia). No cambia el estado general de la solicitud ni puede borrarla (eso lo lleva seguimiento de Equipos o administración), pero sí puede dejar un comentario.
 

@@ -33,6 +33,11 @@ Ves, en **toda tu ciudad** (de cualquier equipo), a quien ya tenga **Bases 1** (
 ## Si eres admin de ciudad
 Como administración, pero limitado a tu ciudad: ves y tocas sus solicitudes; gestionas sus equipos (cualquier campo, aunque en «ciudades donde se puede elegir» solo puedes marcar o quitar la tuya); das de alta y gestionas a quien hace seguimiento de Equipos, de Bases o de GC en tu ciudad; editas los emails, el texto y también el horario de la lista completa, pero solo de tu ciudad (arriba tienes un selector, aunque si solo gestionas una no hace falta tocarlo). No puedes crear ciudades.
 
+Además de lo propio de administración, tienes también las opciones de seguimiento de Equipos, de Bases y de GC: puedes pulsar **Contactar (Bases)** y **Contactar (GC)** en cualquier solicitud que lo necesite (útil si esa ciudad no tiene a nadie asignado a ese rol todavía), con su **Deshacer**. Seguimiento de Equipos también puede.
+
+## Cambiar de equipo
+Administración (total y de ciudad) y seguimiento de Equipos pueden pulsar **Cambiar equipo** junto a cualquier solicitud para moverla a otro equipo, si la persona prefiere uno distinto al que eligió. Solo se puede elegir entre los equipos disponibles en su ciudad.
+
 ## La columna «Qué le falta» (Bases y GC) / «Verificado en Planning Center» (seguimiento de Equipos y administración)
 Si haces seguimiento de **Bases o de GC**, junto a cada persona ves, curso a curso, qué le falta:
 - **No lo tiene hecho:** de verdad le falta ese paso.

@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { db, tx, logEvent } = require('./db');
 const { requireAuth, requireAdminLike, requireSuperAdmin } = require('./auth');
 const config = require('./config');
-const { TEAM_LABEL } = require('./teams');
+const { TEAM_LABEL, findSelectable } = require('./teams');
 const courses = require('./courses');
 const et = require('./email-templates');
 const jobs = require('./jobs');
@@ -236,8 +236,12 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   r.post('/applications/:id/undo-contact', (req, res) => {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
-    if (!['bases', 'gc'].includes(req.user.role)) throw bad('Solo seguimiento de Bases o de GC puede deshacer esto', 403);
-    const event = `contactado_${req.user.role}`;
+    const isRoleLeader = ['bases', 'gc'].includes(req.user.role);
+    const canManageStatus = ['admin', 'city_admin', 'leader'].includes(req.user.role);
+    if (!isRoleLeader && !canManageStatus) throw bad('No tienes permiso para deshacer esto', 403);
+    const kind = isRoleLeader ? req.user.role : str(req.body?.type, 10);
+    if (!['bases', 'gc'].includes(kind)) throw bad('Indica qué contacto deshacer (Bases o GC)');
+    const event = `contactado_${kind}`;
     const last = db.prepare('SELECT id FROM application_events WHERE application_id = ? AND event = ? ORDER BY id DESC LIMIT 1').get(id, event);
     if (!last) throw bad('No hay ningún contacto que deshacer');
     db.prepare('DELETE FROM application_events WHERE id = ?').run(last.id);
@@ -263,9 +267,11 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     const a = fullApp(id);
-    const { status, comment, contact } = req.body || {};
-    // El estado de la solicitud lo lleva administración y seguimiento de Equipos; Bases y GC solo ven, comentan y marcan que han contactado.
-    if (status !== undefined && !['admin', 'city_admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para cambiar el estado', 403);
+    const { status, comment, contact, team_id } = req.body || {};
+    const isRoleLeader = ['bases', 'gc'].includes(req.user.role);
+    const canManageStatus = ['admin', 'city_admin', 'leader'].includes(req.user.role);
+    // El estado de la solicitud lo lleva administración y seguimiento de Equipos.
+    if (status !== undefined && !canManageStatus) throw bad('No tienes permiso para cambiar el estado', 403);
     if (status !== undefined) {
       if (!['contactado', 'visito', 'confirmado', 'no_continua'].includes(status)) throw bad('Estado no válido');
       const followup = status === 'contactado' || status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
@@ -275,10 +281,23 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
         pco.addNote(a.pco_person_id, `Confirmado como miembro del equipo ${a.team_name} (${a.city})`, 'Interesado en servir').catch((e) => logEvent(id, null, 'nota_error', e.message));
       }
     }
-    // Que Bases o GC marquen que han contactado: cada pulsación añade un contacto nuevo (fecha y contador), sin deshacer.
+    // Cambiar de equipo (administración y seguimiento de Equipos), a otro disponible en la misma ciudad.
+    if (team_id !== undefined) {
+      if (!canManageStatus) throw bad('No tienes permiso para cambiar el equipo', 403);
+      const team = findSelectable(Number(team_id), a.city_id);
+      if (!team) throw bad('Ese equipo no está disponible en esta ciudad');
+      if (team.id !== a.team_id) {
+        db.prepare('UPDATE applications SET team_id=?, updated_at=? WHERE id=?').run(team.id, now(), id);
+        logEvent(id, req.user.id, 'equipo', `${a.team_name} → ${team.name}`);
+      }
+    }
+    // Que Bases o GC marquen que han contactado (o administración/Equipos en su lugar, indicando cuál con
+    // `contact: 'bases'|'gc'`): cada pulsación añade un contacto nuevo (fecha), sin sobrescribir los anteriores.
     if (contact) {
-      if (!['bases', 'gc'].includes(req.user.role)) throw bad('Solo seguimiento de Bases o de GC puede marcar esto', 403);
-      logEvent(id, req.user.id, `contactado_${req.user.role}`);
+      const kind = isRoleLeader ? req.user.role : (contact === true ? null : contact);
+      if (!isRoleLeader && !canManageStatus) throw bad('No tienes permiso para marcar esto', 403);
+      if (!['bases', 'gc'].includes(kind)) throw bad('Indica qué contacto marcar (Bases o GC)');
+      logEvent(id, req.user.id, `contactado_${kind}`);
     }
     if (str(comment, 500)) logEvent(id, req.user.id, 'comentario', str(comment, 500));
     res.json({ ok: true });
