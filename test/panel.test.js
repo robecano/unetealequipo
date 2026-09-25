@@ -218,17 +218,25 @@ test('cambiar de equipo: administración y seguimiento de Equipos pueden, a otro
   assert.equal((await req('admin', 'POST', `/api/panel/applications/${id}/undo-team`)).status, 400, 'no hay más cambios de equipo que deshacer');
 });
 
-test('deshacer un comentario: mismo permiso que escribirlo (sin restricción de rol, solo hace falta ver la solicitud)', async () => {
+test('deshacer un comentario: mismo permiso que escribirlo (sin restricción de rol, solo hace falta ver la solicitud); el panel ve el último antes de deshacerlo, no a ciegas', async () => {
   const id = apply('Para Comentar', teamA);
   assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 400, 'aún no hay comentarios');
   assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { comment: 'Primer comentario' })).status, 200);
   assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { comment: 'Segundo comentario' })).status, 200);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM application_events WHERE application_id=? AND event='comentario'").get(id).n, 2);
+  const rows1 = await (await req('leader', 'GET', '/api/panel/applications')).json();
+  const row1 = rows1.find((r) => r.id === id);
+  assert.equal(row1.comment_count, 2);
+  assert.equal(row1.last_comment.text, 'Segundo comentario', 'la lista trae el último comentario, no solo el botón de deshacer a ciegas');
   assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 200);
   const left = db.prepare("SELECT detail FROM application_events WHERE application_id=? AND event='comentario' ORDER BY id DESC LIMIT 1").get(id);
   assert.equal(left.detail, 'Primer comentario', 'quita solo el más reciente');
+  const rows2 = await (await req('leader', 'GET', '/api/panel/applications')).json();
+  assert.equal(rows2.find((r) => r.id === id).last_comment.text, 'Primer comentario', 'ahora el último es el que quedó');
   assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 200);
   assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 400, 'no hay más que deshacer');
+  const rows3 = await (await req('leader', 'GET', '/api/panel/applications')).json();
+  assert.equal(rows3.find((r) => r.id === id).last_comment, null, 'sin comentarios, no hay último');
 });
 
 /**

@@ -158,16 +158,19 @@ async function applicationsView(box) {
         const contactBlock = (kind, label, needs) => (canManageStatus && needs(a) ? h('div', { class: 'acts' },
           h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { contact: kind } }); load(); }) }, `Contactar (${label})`),
           a[`${kind}_contact_count`] ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-contact`, { method: 'POST', body: { type: kind } }); load(); }) }, 'Deshacer') : null) : null);
-        // Comentario libre (cualquiera que vea la solicitud, sin restricción de rol) y deshacer el último.
+        // Comentario libre (cualquiera que vea la solicitud, sin restricción de rol) y deshacer el último. Se ve
+        // el último comentario (con quién sabe cuántos hay en total): si no, «Deshacer» sería a ciegas.
         const commentInput = h('input', { type: 'text', placeholder: 'Comentario…', class: 'mini', style: 'width:150px' });
-        const commentBlock = h('div', { class: 'acts' }, commentInput,
-          h('button', { class: 'mini', onclick: guard(async () => {
-            if (!commentInput.value.trim()) return;
-            await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { comment: commentInput.value.trim() } });
-            commentInput.value = '';
-            load();
-          }) }, 'Comentar'),
-          h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-comment`, { method: 'POST' }); load(); }) }, 'Deshacer comentario'));
+        const commentBlock = h('div', { class: 'stack' },
+          a.last_comment ? h('div', { class: 'muted' }, `Último comentario (${a.comment_count}): «${a.last_comment.text}» · ${fmtDate(a.last_comment.at)}`) : null,
+          h('div', { class: 'acts' }, commentInput,
+            h('button', { class: 'mini', onclick: guard(async () => {
+              if (!commentInput.value.trim()) return;
+              await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { comment: commentInput.value.trim() } });
+              commentInput.value = '';
+              load();
+            }) }, 'Comentar'),
+            a.comment_count ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-comment`, { method: 'POST' }); load(); }) }, 'Deshacer comentario') : null));
         return h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email),
           a.pco_url ? h('br') : null, a.pco_url ? h('a', { href: a.pco_url, target: '_blank', rel: 'noopener' }, 'Perfil PCO') : null,

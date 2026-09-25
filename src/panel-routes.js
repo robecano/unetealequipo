@@ -80,14 +80,17 @@ function visibleApplications(user, { status, q, category } = {}, limit = 500) {
                        ${TEAM_LABEL} AS team, c.name AS city
                      FROM applications a JOIN teams t ON t.id = a.team_id LEFT JOIN teams p ON p.id = t.parent_id JOIN cities c ON c.id = a.city_id
                      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.id DESC LIMIT ${Number(limit)}`).all(...params);
-  // Todas las fechas de cada contacto hecho (no solo la última), agrupadas en una sola consulta para toda la lista.
+  // Todas las fechas de cada contacto hecho (no solo la última), y los comentarios, agrupados en una sola
+  // consulta para toda la lista (así se puede ver qué se va a deshacer, no solo deshacerlo a ciegas).
   const byApp = new Map();
   if (rows.length) {
     const placeholders = rows.map(() => '?').join(',');
-    const evs = db.prepare(`SELECT application_id, event, created_at FROM application_events WHERE application_id IN (${placeholders}) AND event IN ('contactado_bases','contactado_gc') ORDER BY created_at ASC`).all(...rows.map((r) => r.id));
+    const evs = db.prepare(`SELECT application_id, event, detail, created_at FROM application_events WHERE application_id IN (${placeholders}) AND event IN ('contactado_bases','contactado_gc','comentario') ORDER BY created_at ASC`).all(...rows.map((r) => r.id));
     for (const e of evs) {
-      if (!byApp.has(e.application_id)) byApp.set(e.application_id, { bases: [], gc: [] });
-      byApp.get(e.application_id)[e.event === 'contactado_bases' ? 'bases' : 'gc'].push(e.created_at);
+      if (!byApp.has(e.application_id)) byApp.set(e.application_id, { bases: [], gc: [], comments: [] });
+      const d = byApp.get(e.application_id);
+      if (e.event === 'comentario') d.comments.push({ text: e.detail, at: e.created_at });
+      else d[e.event === 'contactado_bases' ? 'bases' : 'gc'].push(e.created_at);
     }
   }
   for (const r of rows) {
@@ -96,13 +99,15 @@ function visibleApplications(user, { status, q, category } = {}, limit = 500) {
     r.basesGaps = courses.basesGaps(r);
     r.gcGaps = courses.gcGaps(r);
     r.pco_url = r.pco_person_id ? `https://people.planningcenteronline.com/people/${r.pco_person_id}` : null;
-    const d = byApp.get(r.id) || { bases: [], gc: [] };
+    const d = byApp.get(r.id) || { bases: [], gc: [], comments: [] };
     r.bases_contact_dates = d.bases;
     r.gc_contact_dates = d.gc;
     r.bases_contact_count = d.bases.length;
     r.bases_last_contact = d.bases[d.bases.length - 1] || null;
     r.gc_contact_count = d.gc.length;
     r.gc_last_contact = d.gc[d.gc.length - 1] || null;
+    r.comment_count = d.comments.length;
+    r.last_comment = d.comments[d.comments.length - 1] || null;
     // Solo administración (total o de ciudad) ve quién hace seguimiento de cada persona (Equipos siempre; Bases o GC si le toca)
     if (user.role === 'admin' || user.role === 'city_admin') {
       r.leaders = roleLeadersOf('leader', r.city_id);
