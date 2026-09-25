@@ -48,4 +48,4 @@ cp .env.example .env   # rellenar; SEED_DEMO=1 crea equipos y ciudades de ejempl
 npm test
 npm start
 ```
-Despliegue: ver `deploy/COOLIFY.md`.
+Despliegue: ver `deploy/COOLIFY.md`. Cada `git push` a `main` redespliega solo en Coolify (webhook de GitHub).
