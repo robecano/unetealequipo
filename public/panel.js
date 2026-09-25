@@ -158,13 +158,24 @@ async function applicationsView(box) {
         const contactBlock = (kind, label, needs) => (canManageStatus && needs(a) ? h('div', { class: 'acts' },
           h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { contact: kind } }); load(); }) }, `Contactar (${label})`),
           a[`${kind}_contact_count`] ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-contact`, { method: 'POST', body: { type: kind } }); load(); }) }, 'Deshacer') : null) : null);
+        // Comentario libre (cualquiera que vea la solicitud, sin restricción de rol) y deshacer el último.
+        const commentInput = h('input', { type: 'text', placeholder: 'Comentario…', class: 'mini', style: 'width:150px' });
+        const commentBlock = h('div', { class: 'acts' }, commentInput,
+          h('button', { class: 'mini', onclick: guard(async () => {
+            if (!commentInput.value.trim()) return;
+            await api(`/panel/applications/${a.id}`, { method: 'PATCH', body: { comment: commentInput.value.trim() } });
+            commentInput.value = '';
+            load();
+          }) }, 'Comentar'),
+          h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-comment`, { method: 'POST' }); load(); }) }, 'Deshacer comentario'));
         return h('tr', {},
         h('td', {}, h('b', {}, a.name), h('br'), h('a', { href: `tel:${a.phone}` }, a.phone), h('br'), h('a', { href: `mailto:${a.email}` }, a.email),
           a.pco_url ? h('br') : null, a.pco_url ? h('a', { href: a.pco_url, target: '_blank', rel: 'noopener' }, 'Perfil PCO') : null,
           a.gc_group_name ? h('br') : null, a.gc_group_name ? h('span', { class: 'muted' }, `GC: ${a.gc_group_name}`) : null,
           h('br'), h('span', { class: 'muted' }, `${fmtDate(a.created_at)} · ${TENURE[a.tenure_months] ?? ''}`)),
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city),
-          canManageStatus ? h('br') : null, canManageStatus ? h('button', { class: 'mini', onclick: openTeamEditor }, 'Cambiar equipo') : null, teamEditBox),
+          canManageStatus ? h('br') : null, canManageStatus ? h('button', { class: 'mini', onclick: openTeamEditor }, 'Cambiar equipo') : null,
+          canManageStatus ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-team`, { method: 'POST' }); load(); }) }, 'Deshacer equipo') : null, teamEditBox),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
           // Solo administración (total o de ciudad): si falta asignar seguimiento de Equipos, de Bases o de GC
           isAdminLike && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Equipo asignado') : null,
@@ -200,7 +211,8 @@ async function applicationsView(box) {
             load();
             toast(`Solicitud de ${a.name} borrada.`, { actionLabel: 'Deshacer', onAction: async () => { await api(`/panel/applications/${a.id}/restore`, { method: 'POST' }); load(); } });
           }) }, 'Borrar') : null,
-          isAdminLike && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null)));
+          isAdminLike && a.status === 'recibida' ? h('button', { onclick: guard(async () => { await api(`/panel/admin/applications/${a.id}/reprocess`, { method: 'POST' }); load(); }) }, 'Reprocesar') : null,
+          commentBlock)));
       }))))
       : h('div', { class: 'empty card' }, 'No hay solicitudes con estos filtros.'));
   };
@@ -217,7 +229,13 @@ async function applicationsView(box) {
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
   if (cat) cat.addEventListener('change', load);
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, exportLink), body);
+  // Actualiza con Planning Center toda la lista con los filtros actuales (no solo una solicitud)
+  const bulkRefresh = h('button', { class: 'mini', onclick: guard(async () => {
+    const res = await api('/panel/applications/refresh-pco', { method: 'POST', body: { status: st.value, q: q.value, category: cat ? cat.value : '' } });
+    toast(`Actualizado con Planning Center: ${res.refreshed} de ${res.total} solicitudes.`);
+    load();
+  }) }, 'Actualizar Planning Center (toda la lista)');
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, exportLink, bulkRefresh), body);
   load();
 }
 
@@ -338,6 +356,19 @@ async function citiesView(box) {
   const input = h('input', { placeholder: 'Nueva ciudad' });
   box.replaceChildren(h('form', { class: 'toolbar', onsubmit: guard(async (e) => { e.preventDefault(); await api('/panel/admin/cities', { method: 'POST', body: { name: input.value } }); citiesView(box); }) }, input, h('button', { class: 'btn btn-sm' }, 'Añadir')),
     h('div', { class: 'card' }, cities.map((c) => h('div', { class: 'li' }, h('span', {}, c.name, c.active ? '' : ' (oculta)'), h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/admin/cities/${c.id}`, { method: 'PATCH', body: { active: !c.active } }); citiesView(box); }) }, c.active ? 'Ocultar' : 'Mostrar')))));
+}
+
+const fmtDateTime = (s) => (s ? new Date(s.replace(' ', 'T') + (s.includes('Z') || s.includes('+') ? '' : 'Z')).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+
+/** Historial de sincronizaciones con Planning Center: fichas encontradas, notas escritas y errores (de cursos o de la nota). */
+async function syncLogView(box) {
+  const rows = await api('/panel/admin/sync-log');
+  box.replaceChildren(rows.length
+    ? h('div', { class: 'card' }, rows.map((e) => h('div', { class: 'li' },
+        h('div', {}, h('b', {}, e.name), ' · ', h('span', { class: 'muted' }, e.city),
+          h('div', { class: e.is_error ? 'error' : '' }, e.label, e.event === 'nota_pco' ? ` (nota #${e.detail})` : (e.detail ? `: ${e.detail}` : ''))),
+        h('span', { class: 'muted' }, fmtDateTime(e.created_at)))))
+    : h('div', { class: 'empty card' }, 'Sin sincronizaciones registradas todavía.'));
 }
 
 async function usersView(box) {
@@ -493,7 +524,7 @@ async function boot() {
   const tabs = [['apps', 'Solicitudes', applicationsView]];
   if (['admin', 'city_admin'].includes(me.role)) tabs.push(['teams', 'Equipos', teamsView]);
   if (me.role === 'admin') tabs.push(['cities', 'Ciudades', citiesView]);
-  if (['admin', 'city_admin'].includes(me.role)) tabs.push(['users', 'Usuarios', usersView], ['emails', 'Emails', emailsView]);
+  if (['admin', 'city_admin'].includes(me.role)) tabs.push(['users', 'Usuarios', usersView], ['emails', 'Emails', emailsView], ['sync', 'Sincronización', syncLogView]);
   const content = h('div');
   const bar = h('div', { class: 'tabs' });
   const go = guard(async (key) => {

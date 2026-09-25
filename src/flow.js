@@ -60,14 +60,17 @@ function createFlow({ pco, mail }) {
       return { inGc: null, groupName: null };
     }
   };
-  /** Si ha enviado el formulario de registro de Bases 1/2/GC (ver pco.getFormStatus). Nunca lanza. */
+  /**
+   * Si ha enviado el formulario de registro de Bases 1/2/GC, y si ha enviado los dos formularios de asistencia
+   * de Bases 1 (bases1Attendance: vía alternativa para dar Bases 1 por hecho, ver pco.getFormStatus). Nunca lanza.
+   */
   const fetchFormStatus = async (personId) => {
-    if (!personId || typeof pco.getFormStatus !== 'function') return { bases1: null, bases2: null, gc: null };
+    if (!personId || typeof pco.getFormStatus !== 'function') return { bases1: null, bases2: null, gc: null, bases1Attendance: false };
     try {
       const s = await pco.getFormStatus(personId);
-      return { bases1: +!!s.bases1, bases2: +!!s.bases2, gc: +!!s.gc };
+      return { bases1: +!!s.bases1, bases2: +!!s.bases2, gc: +!!s.gc, bases1Attendance: !!s.bases1Attendance };
     } catch {
-      return { bases1: null, bases2: null, gc: null };
+      return { bases1: null, bases2: null, gc: null, bases1Attendance: false };
     }
   };
   const safeMail = async (id, label, msg, to) => {
@@ -145,12 +148,15 @@ function createFlow({ pco, mail }) {
     }
 
     const gcInfo = await fetchGcInfo(person?.id);
-    const forms = person ? await fetchFormStatus(person.id) : { bases1: null, bases2: null, gc: null };
+    const forms = person ? await fetchFormStatus(person.id) : { bases1: null, bases2: null, gc: null, bases1Attendance: false };
+    // Bases 1 cuenta como hecho si el campo de casillas lo confirma, O si envió los dos formularios de
+    // asistencia (una sesión cada uno) aunque el campo todavía no se haya marcado a mano.
+    const bases1Done = person ? (course.bases1 || forms.bases1Attendance) : null;
     setStatus('listo', {
       ready_at: now(),
       followup_at: inDays(FOLLOWUP_DAYS),
       pco_person_id: person?.id ?? null,
-      pco_bases1: person ? +course.bases1 : null, // null = no se sabe (no hay ficha)
+      pco_bases1: person ? +bases1Done : null, // null = no se sabe (no hay ficha)
       pco_bases2: person ? +course.bases2 : null,
       pco_gc: gcInfo.inGc, // según Planning Center Groups, no el checkbox «GC Asignado»
       gc_group_name: gcInfo.groupName,
@@ -185,25 +191,37 @@ function createFlow({ pco, mail }) {
   /**
    * Refresca los datos de Planning Center de una sola solicitud (enlaza la ficha si no la tenía, Bases 1,
    * Bases 2, GC —según Planning Center Groups— y los formularios de registro). Lo usan tanto el refresco
-   * periódico (refreshCourses) como el botón «Actualizar Planning Center» del panel, para no duplicar la lógica.
-   * No reenvía ningún aviso ni cambia el estado de la solicitud.
+   * periódico (refreshCourses) como los botones «Actualizar Planning Center» del panel (uno por solicitud y
+   * uno para toda la lista), para no duplicar la lógica. No reenvía ningún aviso ni cambia el estado.
+   *
+   * Nunca lanza: si algo falla (Planning Center caído, etc.) se registra el error en el historial y también en
+   * `applications.error`, para que se vea en el panel junto a esa solicitud — y se limpia solo en cuanto un
+   * refresco vuelva a salir bien.
    */
   async function refreshOne(r) {
-    let personId = r.pco_person_id;
-    if (!personId) {
-      const found = await pco.findPerson({ email: r.email, phone: r.phone, name: r.name });
-      if (!found) return false;
-      personId = found.id;
-      db.prepare('UPDATE applications SET pco_person_id=?, note_synced=0, notes_done=0, updated_at=? WHERE id=?').run(personId, now(), r.id);
-      logEvent(r.id, null, 'pco_enlazada', `Ya tiene ficha en Planning Center (${personId})`);
-      await writeNotes(r.id);
+    try {
+      let personId = r.pco_person_id;
+      if (!personId) {
+        const found = await pco.findPerson({ email: r.email, phone: r.phone, name: r.name });
+        if (!found) return false;
+        personId = found.id;
+        db.prepare('UPDATE applications SET pco_person_id=?, note_synced=0, notes_done=0, updated_at=? WHERE id=?').run(personId, now(), r.id);
+        logEvent(r.id, null, 'pco_enlazada', `Ya tiene ficha en Planning Center (${personId})`);
+        await writeNotes(r.id);
+      }
+      const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
+      const gcInfo = await fetchGcInfo(personId); // según Planning Center Groups, no el checkbox «GC Asignado»
+      const forms = await fetchFormStatus(personId);
+      // Bases 1 cuenta como hecho con el campo de casillas O con los dos formularios de asistencia enviados.
+      const bases1Done = c.bases1 || forms.bases1Attendance;
+      db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, form_bases1=?, form_bases2=?, form_gc=?, error=NULL, updated_at=? WHERE id=?')
+        .run(+bases1Done, +c.bases2, gcInfo.inGc, gcInfo.groupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
+      return true;
+    } catch (e) {
+      logEvent(r.id, null, 'pco_error', e.message);
+      db.prepare('UPDATE applications SET error=?, updated_at=? WHERE id=?').run(String(e.message).slice(0, 300), now(), r.id);
+      return false;
     }
-    const c = await pco.getCourseStatus(personId, { fields: config.fields, required: config.required });
-    const gcInfo = await fetchGcInfo(personId); // según Planning Center Groups, no el checkbox «GC Asignado»
-    const forms = await fetchFormStatus(personId);
-    db.prepare('UPDATE applications SET pco_bases1=?, pco_bases2=?, pco_gc=?, gc_group_name=?, form_bases1=?, form_bases2=?, form_gc=?, updated_at=? WHERE id=?')
-      .run(+c.bases1, +c.bases2, gcInfo.inGc, gcInfo.groupName, forms.bases1, forms.bases2, forms.gc, now(), r.id);
-    return true;
   }
 
   /**
@@ -215,13 +233,7 @@ function createFlow({ pco, mail }) {
   async function refreshCourses() {
     const rows = db.prepare("SELECT id, name, email, phone, pco_person_id FROM applications WHERE status IN ('listo','contactado','visito') AND deleted_at IS NULL").all();
     let refreshed = 0;
-    for (const r of rows) {
-      try {
-        if (await refreshOne(r)) refreshed++;
-      } catch (e) {
-        logEvent(r.id, null, 'pco_error', e.message);
-      }
-    }
+    for (const r of rows) if (await refreshOne(r)) refreshed++;
     return refreshed;
   }
 
@@ -231,6 +243,16 @@ function createFlow({ pco, mail }) {
     if (!a) return null;
     await refreshOne(a);
     return fullApp(id);
+  }
+
+  /** Botón «Actualizar Planning Center» para toda la lista visible: refresca justo esas solicitudes, no todas las del sistema. */
+  async function refreshMany(ids) {
+    let refreshed = 0;
+    for (const id of ids) {
+      const a = fullApp(id);
+      if (a && (await refreshOne(a))) refreshed++;
+    }
+    return refreshed;
   }
 
   /** Reparte una lista en nuevas desde el último resumen, a quien toca hacer seguimiento y el resto. */
@@ -288,7 +310,7 @@ function createFlow({ pco, mail }) {
     return sent;
   }
 
-  return { process, retryReceived, retryNotes, refreshCourses, refreshApplication, sendDigests, sendDigestsForCity };
+  return { process, retryReceived, retryNotes, refreshCourses, refreshApplication, refreshMany, sendDigests, sendDigestsForCity };
 }
 
 module.exports = { createFlow, fullApp, FOLLOWUP_DAYS, OPEN, inDays, now, noteTexts, forTemplate };

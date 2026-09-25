@@ -18,12 +18,17 @@ const forms = [
   { id: '2', name: 'Registro Bases 2 Madrid' },
   { id: '3', name: 'Registro a Grupos de Conexión BCN' },
   { id: '4', name: 'Registro Bases 3 Barcelona' },
+  { id: '5', name: 'Asistencia Bloques 1, 2 y 3 (Sesión 1) de Bases 1' },
+  { id: '6', name: 'Asistencia Bloques 4, 5 y 6 (Sesión 2) de Bases 1' },
 ];
 const submissions = [
   { form: '1', person: '100', at: '2026-09-20T10:00:00Z' },
   { form: '3', person: '100', at: '2026-09-21T10:00:00Z' },
   { form: '2', person: '200', at: '2026-09-22T10:00:00Z' },
   { form: '4', person: '300', at: '2026-09-22T10:00:00Z' },
+  { form: '5', person: '500', at: '2026-09-20T10:00:00Z' },
+  { form: '6', person: '500', at: '2026-09-22T10:00:00Z' }, // las dos sesiones: cuenta como asistido
+  { form: '5', person: '501', at: '2026-09-20T10:00:00Z' }, // solo una sesión: no cuenta
 ];
 // Campos de Bases 1 y Bases 2 (casillas, una por sesión) tal como están en producción: mismo nombre de opción,
 // «Bases 1» con un espacio inicial en el valor (norm() lo recorta igual).
@@ -65,10 +70,17 @@ test.after(() => server.close());
 
 test('getFormStatus lee los envíos de la persona y los cruza con los formularios de cada curso (Bases 1, Bases 2, GC; Bases 3 no cuenta)', async () => {
   const pco = require('../src/pco');
-  assert.deepEqual(await pco.getFormStatus('100'), { bases1: true, bases2: false, gc: true });
-  assert.deepEqual(await pco.getFormStatus('200'), { bases1: false, bases2: true, gc: false });
-  assert.deepEqual(await pco.getFormStatus('300'), { bases1: false, bases2: false, gc: false });
+  assert.deepEqual(await pco.getFormStatus('100'), { bases1: true, bases2: false, gc: true, bases1Attendance: false });
+  assert.deepEqual(await pco.getFormStatus('200'), { bases1: false, bases2: true, gc: false, bases1Attendance: false });
+  assert.deepEqual(await pco.getFormStatus('300'), { bases1: false, bases2: false, gc: false, bases1Attendance: false });
   assert.ok(requests.some((p) => p === '/people/v2/people/100/form_submissions'), 'usa la ruta por persona (comprobada contra producción)');
+});
+
+test('getFormStatus: bases1Attendance solo es true si envió los dos formularios de asistencia de Bases 1 (Sesión 1 y Sesión 2)', async () => {
+  const pco = require('../src/pco');
+  assert.equal((await pco.getFormStatus('500')).bases1Attendance, true, 'envió las dos sesiones');
+  assert.equal((await pco.getFormStatus('501')).bases1Attendance, false, 'solo envió la sesión 1');
+  assert.equal((await pco.getFormStatus('300')).bases1Attendance, false, 'no envió ninguna');
 });
 
 test('getGcInfo: membresía activa en un grupo de tipo «Grupo de Conexión»', async () => {

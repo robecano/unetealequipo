@@ -200,6 +200,11 @@ async function addNote(personId, text, categoryName) {
   return json.data.id;
 }
 
+/** Borra una nota de la ficha de la persona (comprobado contra producción: DELETE /people/v2/notes/{id} funciona). */
+async function deleteNote(noteId) {
+  await request('DELETE', `/people/v2/notes/${noteId}`);
+}
+
 // ---------- Formularios de registro (Bases 1, Bases 2 y GC) ----------
 // «Registro Bases 1 …», «Registro Bases 2 …» y «Registro a Grupos de Conexión …» (uno por ciudad cada uno).
 // Se excluyen los de Bases 3 (liderazgo, no es un paso de este flujo) y los ya archivados.
@@ -220,10 +225,32 @@ async function formIdsByCourse() {
   return ids;
 }
 
+// «Asistencia Bloques 1,2 y 3 (Sesión 1) de Bases 1» y «… (Sesión 2) de Bases 1»: dos formularios únicos (no
+// por ciudad), uno por sesión. Si la persona envió los dos, ha asistido a Bases 1 aunque el campo de casillas
+// de su ficha todavía no lo tenga marcado (alguien tiene que marcarlo a mano, y puede quedarse desactualizado).
+const BASES1_ATTENDANCE_PATTERNS = [
+  /^\s*Asistencia Bloques 1,?\s*2 y\s*3 \(Sesi[oó]n 1\) de Bases 1\b/i,
+  /^\s*Asistencia Bloques 4,?\s*5 y\s*6 \(Sesi[oó]n 2\) de Bases 1\b/i,
+];
+let bases1AttFormIdsCache = null;
+
+async function bases1AttendanceFormIds() {
+  if (bases1AttFormIdsCache) return bases1AttFormIdsCache;
+  const { data } = await getAll('/people/v2/forms', { per_page: 100 });
+  const active = data.filter((f) => !attrs(f).archived_at);
+  bases1AttFormIdsCache = BASES1_ATTENDANCE_PATTERNS
+    .map((re) => active.find((f) => re.test(attrs(f).name || '')))
+    .map((f) => f && String(f.id))
+    .filter(Boolean);
+  return bases1AttFormIdsCache;
+}
+
 /**
  * ¿Ha enviado la persona el formulario de registro de Bases 1, Bases 2 y/o GC? Independiente de si Planning
  * Center ya ha confirmado el curso (eso tarda: alguien tiene que pasar asistencia o marcar el GC) — sirve para
- * ver, mientras se espera esa confirmación, si la persona ya se está apuntando por su cuenta.
+ * ver, mientras se espera esa confirmación, si la persona ya se está apuntando por su cuenta. También devuelve
+ * `bases1Attendance`: si envió los dos formularios de asistencia de Bases 1 (ver bases1AttendanceFormIds),
+ * una vía alternativa a que el campo de casillas de su ficha esté marcado.
  *
  * Usa /people/v2/people/{id}/form_submissions (comprobado contra producción: existe y responde bien). La
  * alternativa de recorrer cada formulario entero para construir un índice se probó y se descartó: en un
@@ -231,11 +258,12 @@ async function formIdsByCourse() {
  * comprobado también contra producción, donde así faltaba un envío real que sí existía.
  */
 async function getFormStatus(personId) {
-  const ids = await formIdsByCourse();
+  const [ids, attIds] = await Promise.all([formIdsByCourse(), bases1AttendanceFormIds()]);
   const { data } = await getAll(`/people/v2/people/${personId}/form_submissions`, { per_page: 100 });
   const submitted = new Set(data.map((d) => String(d.relationships?.form?.data?.id || '')));
   const has = (k) => [...ids[k]].some((id) => submitted.has(id));
-  return { bases1: has('bases1'), bases2: has('bases2'), gc: has('gc') };
+  const bases1Attendance = attIds.length === 2 && attIds.every((id) => submitted.has(id));
+  return { bases1: has('bases1'), bases2: has('bases2'), gc: has('gc'), bases1Attendance };
 }
 
 // ---------- Grupo de Conexión (Planning Center Groups) ----------
@@ -287,5 +315,5 @@ async function getGcInfo(personId) {
 }
 
 module.exports = {
-  PcoError, request, getAll, findPerson, getCourseStatus, addNote, fieldDone, phoneKey,
+  PcoError, request, getAll, findPerson, getCourseStatus, addNote, deleteNote, fieldDone, phoneKey,
   getGcInfo, gcGroupTypeIds, getFormStatus };

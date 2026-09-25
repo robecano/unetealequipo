@@ -36,7 +36,13 @@ Como administración, pero limitado a tu ciudad: ves y tocas sus solicitudes; ge
 Además de lo propio de administración, tienes también las opciones de seguimiento de Equipos, de Bases y de GC: puedes pulsar **Contactar (Bases)** y **Contactar (GC)** en cualquier solicitud que lo necesite (útil si esa ciudad no tiene a nadie asignado a ese rol todavía), con su **Deshacer**. Seguimiento de Equipos también puede.
 
 ## Cambiar de equipo
-Administración (total y de ciudad) y seguimiento de Equipos pueden pulsar **Cambiar equipo** junto a cualquier solicitud para moverla a otro equipo, si la persona prefiere uno distinto al que eligió. Solo se puede elegir entre los equipos disponibles en su ciudad.
+Administración (total y de ciudad) y seguimiento de Equipos pueden pulsar **Cambiar equipo** junto a cualquier solicitud para moverla a otro equipo, si la persona prefiere uno distinto al que eligió. Solo se puede elegir entre los equipos disponibles en su ciudad. Si te equivocas, pulsa **Deshacer equipo**: vuelve al que tenía justo antes.
+
+## Comentarios
+Cualquiera que vea una solicitud puede escribir un comentario libre (junto al resto de botones de acciones) y **Deshacer comentario** quita el más reciente si te equivocas.
+
+## Si algo falla al sincronizar con Planning Center
+Si una solicitud no se ha podido comprobar contra Planning Center (ficha, cursos o la nota), verás un aviso en rojo bajo su estado. Administración tiene además una pestaña **Sincronización** con el historial completo: fichas encontradas, notas escritas y errores, con fecha y persona.
 
 ## La columna «Qué le falta» (Bases y GC) / «Verificado en Planning Center» (seguimiento de Equipos y administración)
 Si haces seguimiento de **Bases o de GC**, junto a cada persona ves, curso a curso, qué le falta:
@@ -50,7 +56,7 @@ Si haces **seguimiento de Equipos o eres administración**, en su lugar ves si l
 
 Si le falta algo de verdad, verás también ahí un recordatorio para que lo complete antes de empezar a servir, aunque ponga «Sí» (contrastado y completo son cosas distintas).
 
-Bases 1 y Bases 2 solo cuentan como hechos en Planning Center si constan **las dos sesiones de asistencia** marcadas (no basta con una).
+Bases 1 y Bases 2 solo cuentan como hechos en Planning Center si constan **las dos sesiones de asistencia** marcadas (no basta con una) — para Bases 1 también vale que haya enviado los dos formularios de asistencia (uno por sesión), por si a alguien se le olvida marcar el campo a mano.
 
 ## «Formulario ✓» / «Sin formulario» bajo B1, GC o B2
 Cuando a la persona le falta un curso (según Planning Center), justo debajo del ✗ verás si **ya ha enviado el formulario de registro** de ese paso (hillsong.es/bases o hillsong.es/gc) — independiente de que Planning Center todavía no confirme el curso, porque eso tarda: alguien tiene que pasar asistencia o marcar el GC. Te sirve para saber si ya se está apuntando o si hace falta animarla a hacerlo. Si ya tiene el curso hecho no se muestra nada ahí, y seguimiento de Bases solo lo ve bajo B1/B2, seguimiento de GC solo bajo GC.
@@ -59,10 +65,10 @@ Cuando a la persona le falta un curso (según Planning Center), justo debajo del
 - **B1 / GC / B2:** ✓ si lo tiene (por Planning Center o porque lo declaró en el formulario), ✗ si no.
 - **Perfil PCO:** enlace directo a su ficha de Planning Center, cuando hay una.
 - **Contactar** (Bases y GC): marca un contacto nuevo cada vez que la llamas — se ve en el panel de seguimiento de Equipos, con todas las fechas en que se la ha contactado.
-- **Deshacer** (junto a Contactar, o «Deshacer estado» junto a los botones de estado): quita el último contacto o el último cambio de estado que marcaste, por si te equivocas.
+- **Deshacer** (junto a Contactar, «Deshacer estado», «Deshacer equipo» o «Deshacer comentario»): quita el último contacto, cambio de estado, cambio de equipo o comentario, por si te equivocas. Si lo que deshaces es un «Resolver», también se borra la nota que se había escrito en Planning Center.
 - **Contacté / Visitó / Resolver / No continúa** (seguimiento de Equipos y administración): avanza el estado de la solicitud.
 - **Borrar** (solo seguimiento de Equipos y administración): quita una solicitud de la lista (no hace falta para las que ya no siguen: usa mejor **No continúa**, así queda el historial). Se puede deshacer justo después con el aviso que aparece abajo.
-- **Actualizar Planning Center**: vuelve a comprobar Bases 1, Bases 2, GC y los formularios al momento, sin esperar a la próxima lista — útil justo después de llamar, para ver si ya se ha actualizado. Disponible para cualquiera que vea la solicitud.
+- **Actualizar Planning Center**: vuelve a comprobar Bases 1, Bases 2, GC y los formularios al momento, sin esperar a la próxima lista — útil justo después de llamar, para ver si ya se ha actualizado. Disponible para cualquiera que vea la solicitud. Junto al buscador hay otro para actualizar **toda la lista visible** de golpe.
 - **Exportar CSV:** descarga tu lista.
 - **Cabeceras de la tabla:** pulsa cualquiera (Persona, Equipo, Estado…) para ordenar la lista por esa columna; vuelve a pulsar para invertir el orden.
 

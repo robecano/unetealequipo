@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 process.env.DB_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ute-pn-')), 'test.db');
 process.env.SESSION_SECRET = 'w'.repeat(40);
@@ -133,10 +134,12 @@ test('«Actualizar Planning Center»: respeta el mismo ámbito que ver la solici
   const mine = apply('Para Actualizar', teamA);
   const otraCiudad = apply('Otra Ciudad Actualizar', teamA, { city: other });
   assert.equal((await req('leader', 'POST', `/api/panel/applications/${otraCiudad}/refresh-pco`)).status, 404, 'otra ciudad: no se ve');
-  // Sin PCO_APP_ID/PCO_SECRET en las pruebas, la llamada real a Planning Center falla, pero el servidor responde
-  // con un error controlado (500) en vez de caerse; la comprobación de permisos ya pasó (llegó a intentarlo).
+  // Sin PCO_APP_ID/PCO_SECRET en las pruebas, la llamada real a Planning Center falla, pero refreshOne se lo traga
+  // y lo deja anotado en `error`: el servidor responde 200 en vez de caerse (la comprobación de permisos ya pasó).
   const r = await req('leader', 'POST', `/api/panel/applications/${mine}/refresh-pco`);
-  assert.equal(r.status, 500);
+  assert.equal(r.status, 200);
+  const body = await r.json();
+  assert.ok(body.application.error, 'el fallo de PCO queda anotado en la solicitud, no se pierde en silencio');
   const sinSesion = await fetch(base + `/api/panel/applications/${mine}/refresh-pco`, { method: 'POST' });
   assert.equal(sinSesion.status, 401);
 });
@@ -204,6 +207,121 @@ test('cambiar de equipo: administración y seguimiento de Equipos pueden, a otro
   // admin total también puede
   assert.equal((await req('admin', 'PATCH', `/api/panel/applications/${id}`, { team_id: tOrigen })).status, 200);
   assert.equal(db.prepare('SELECT team_id FROM applications WHERE id=?').get(id).team_id, tOrigen);
+
+  // Deshacer el cambio de equipo: vuelve al que tenía justo antes
+  assert.equal((await req('basesTeam', 'POST', `/api/panel/applications/${id}/undo-team`)).status, 403, 'Bases no puede deshacer el equipo');
+  const rUndoTeam = await req('leaderTeam', 'POST', `/api/panel/applications/${id}/undo-team`);
+  assert.equal(rUndoTeam.status, 200);
+  assert.equal(db.prepare('SELECT team_id FROM applications WHERE id=?').get(id).team_id, tDestino, 'vuelve al equipo anterior (Destino, antes del último cambio a Origen)');
+  assert.equal((await req('admin', 'POST', `/api/panel/applications/${id}/undo-team`)).status, 200, 'deshace también el cambio anterior');
+  assert.equal(db.prepare('SELECT team_id FROM applications WHERE id=?').get(id).team_id, tOrigen);
+  assert.equal((await req('admin', 'POST', `/api/panel/applications/${id}/undo-team`)).status, 400, 'no hay más cambios de equipo que deshacer');
+});
+
+test('deshacer un comentario: mismo permiso que escribirlo (sin restricción de rol, solo hace falta ver la solicitud)', async () => {
+  const id = apply('Para Comentar', teamA);
+  assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 400, 'aún no hay comentarios');
+  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { comment: 'Primer comentario' })).status, 200);
+  assert.equal((await req('leader', 'PATCH', `/api/panel/applications/${id}`, { comment: 'Segundo comentario' })).status, 200);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM application_events WHERE application_id=? AND event='comentario'").get(id).n, 2);
+  assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 200);
+  const left = db.prepare("SELECT detail FROM application_events WHERE application_id=? AND event='comentario' ORDER BY id DESC LIMIT 1").get(id);
+  assert.equal(left.detail, 'Primer comentario', 'quita solo el más reciente');
+  assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 200);
+  assert.equal((await req('leader', 'POST', `/api/panel/applications/${id}/undo-comment`)).status, 400, 'no hay más que deshacer');
+});
+
+/**
+ * Planning Center simulado (mismo patrón que test/pco-forms.test.js): sirve para probar contra un servidor real
+ * de verdad las tres cosas que dependen de una respuesta de Planning Center que funcione: la nota que se escribe
+ * al confirmar (y que se borra si se deshace), el refresco en bloque de toda la lista, y lo que queda en el
+ * historial de sincronización.
+ */
+test('Planning Center: nota al confirmar (se borra si se deshace el "Resolver"), «Actualizar Planning Center» para toda la lista, e historial de sincronización', async () => {
+  const config = require('../src/config');
+  const saved = { ...config.pco };
+  const noteCreates = [];
+  const noteDeletes = [];
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://x');
+    const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(body === undefined ? '' : JSON.stringify(body)); };
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      let m;
+      if (req.method === 'POST' && /^\/people\/v2\/people\/\d+\/notes$/.test(url.pathname)) {
+        const id = String(1000 + noteCreates.length);
+        noteCreates.push(id);
+        return send(200, { data: { type: 'Note', id, attributes: {} } });
+      }
+      if (req.method === 'DELETE' && (m = url.pathname.match(/^\/people\/v2\/notes\/(\d+)$/))) {
+        noteDeletes.push(m[1]);
+        return send(204);
+      }
+      if (url.pathname === '/people/v2/note_categories') return send(200, { data: [{ type: 'NoteCategory', id: '1', attributes: { name: 'Interesado en servir' } }] });
+      if (url.pathname === '/people/v2/field_definitions') return send(200, { data: [
+        { type: 'FieldDefinition', id: '1', attributes: { name: 'Bases 1' } },
+        { type: 'FieldDefinition', id: '2', attributes: { name: 'Bases 2' } },
+      ] });
+      if (/^\/people\/v2\/people\/\d+\/field_data$/.test(url.pathname)) return send(200, { data: [] });
+      if (url.pathname === '/people/v2/forms') return send(200, { data: [] });
+      if (/^\/people\/v2\/people\/\d+\/form_submissions$/.test(url.pathname)) return send(200, { data: [] });
+      if (url.pathname === '/groups/v2/group_types') return send(200, { data: [] });
+      if (/^\/groups\/v2\/people\/\d+\/memberships$/.test(url.pathname)) return send(200, { data: [] });
+      send(404, { errors: [{ detail: `No implementado en la prueba: ${req.method} ${url.pathname}` }] });
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  Object.assign(config.pco, { base: `http://127.0.0.1:${server.address().port}`, appId: 'test', secret: 'test' });
+
+  try {
+    const cityP = Number(db.prepare("INSERT INTO cities (name) VALUES ('Planning Center Test')").run().lastInsertRowid);
+    const tP = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo PCO')").run().lastInsertRowid);
+    const lP = Number(db.prepare("INSERT INTO users (email, role) VALUES ('leader-pco@test.es', 'leader')").run().lastInsertRowid);
+    db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lP, cityP);
+    await login('leaderPco', 'leader-pco@test.es', 'HillsongEspana');
+
+    const id = apply('Confirmar PCO', tP, { city: cityP });
+    assert.equal((await req('leaderPco', 'PATCH', `/api/panel/applications/${id}`, { status: 'confirmado' })).status, 200);
+    assert.equal(db.prepare('SELECT status FROM applications WHERE id=?').get(id).status, 'confirmado');
+    const noteEv = db.prepare("SELECT detail FROM application_events WHERE application_id=? AND event='nota_pco' ORDER BY id DESC LIMIT 1").get(id);
+    assert.ok(noteEv, 'queda registrada la nota escrita en Planning Center');
+    assert.equal(noteCreates.length, 1);
+    assert.equal(noteEv.detail, noteCreates[0]);
+
+    // Deshacer el «Resolver» también borra esa nota en Planning Center (y su registro)
+    assert.equal((await req('leaderPco', 'POST', `/api/panel/applications/${id}/undo-status`)).status, 200);
+    assert.equal(db.prepare('SELECT status FROM applications WHERE id=?').get(id).status, 'listo');
+    assert.deepEqual(noteDeletes, [noteCreates[0]], 'la nota se ha borrado de Planning Center');
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM application_events WHERE application_id=? AND event='nota_pco'").get(id).n, 0);
+
+    // «Actualizar Planning Center» para toda la lista: solo lo que está en el ámbito de quien lo pide. Se crea
+    // otra solicitud en otra ciudad para comprobar que total=1 (no la cuenta, aunque exista).
+    apply('Otra Ciudad Bulk', teamA, { city: other });
+    const rBulk = await req('leaderPco', 'POST', '/api/panel/applications/refresh-pco', {});
+    assert.equal(rBulk.status, 200);
+    const bulkBody = await rBulk.json();
+    assert.equal(bulkBody.total, 1, 'solo ve la solicitud de su ciudad');
+    assert.equal(bulkBody.refreshed, 1, 'se ha podido refrescar contra el Planning Center simulado');
+    assert.equal(db.prepare('SELECT error FROM applications WHERE id=?').get(id).error, null);
+
+    // Otra solicitud que se confirma y NO se deshace: para comprobar que su nota sí queda en el historial (la
+    // de `id`, más arriba, se deshizo a propósito, así que su nota_pco ya no existe).
+    const id2 = apply('Confirmar PCO Sin Deshacer', tP, { city: cityP });
+    assert.equal((await req('leaderPco', 'PATCH', `/api/panel/applications/${id2}`, { status: 'confirmado' })).status, 200);
+    assert.equal(noteCreates.length, 2);
+
+    // Historial de sincronizaciones y errores: solo administración, y de ciudad ve solo la suya
+    assert.equal((await req('leaderPco', 'GET', '/api/panel/admin/sync-log')).status, 403, 'seguimiento de Equipos no accede al historial de sincronización');
+    const rLog = await req('admin', 'GET', '/api/panel/admin/sync-log');
+    assert.equal(rLog.status, 200);
+    const logRows = await rLog.json();
+    assert.ok(logRows.some((e) => e.application_id === id2 && e.event === 'nota_pco'), 'la nota escrita queda en el historial');
+    assert.ok(logRows.some((e) => e.event === 'pco_error'), 'los errores de sincronización (de antes, sin Planning Center configurado) también quedan');
+  } finally {
+    server.close();
+    Object.assign(config.pco, saved);
+  }
 });
 
 test('seguimiento de Equipos puede marcar el estado de cualquier solicitud de su ciudad (de cualquier equipo), pero no la de otra ciudad', async () => {

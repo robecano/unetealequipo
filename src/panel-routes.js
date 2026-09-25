@@ -208,6 +208,16 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   }));
 
   /**
+   * «Actualizar Planning Center» para toda la lista visible (los mismos filtros que se están viendo, no todas
+   * las solicitudes del sistema): refresca cada una y dice cuántas se han podido comprobar.
+   */
+  r.post('/applications/refresh-pco', wrap(async (req, res) => {
+    const rows = visibleApplications(req.user, { status: str(req.body?.status, 20), q: str(req.body?.q, 60), category: str(req.body?.category, 20) }, 20000);
+    const refreshed = await flow.refreshMany(rows.map((a) => a.id));
+    res.json({ ok: true, refreshed, total: rows.length });
+  }));
+
+  /**
    * Borra una solicitud (administración, o seguimiento de Equipos dentro de su ciudad). Borrado blando: se
    * marca `deleted_at` y deja de verse en el panel y en los resúmenes, pero se puede deshacer con
    * POST /applications/:id/restore (el historial no se toca, así el «deshacer» lo recupera todo tal cual).
@@ -232,6 +242,33 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ ok: true });
   });
 
+  /** Deshace el último comentario añadido (mismo permiso que escribirlo: cualquiera que ya vea la solicitud). */
+  r.post('/applications/:id/undo-comment', (req, res) => {
+    const id = Number(req.params.id);
+    if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    const last = db.prepare("SELECT id FROM application_events WHERE application_id = ? AND event = 'comentario' ORDER BY id DESC LIMIT 1").get(id);
+    if (!last) throw bad('No hay ningún comentario que deshacer');
+    db.prepare('DELETE FROM application_events WHERE id = ?').run(last.id);
+    res.json({ ok: true });
+  });
+
+  /** Deshace el último cambio de equipo, volviendo al equipo anterior (mismos permisos que cambiarlo). */
+  r.post('/applications/:id/undo-team', (req, res) => {
+    const id = Number(req.params.id);
+    if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
+    if (!['admin', 'city_admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para deshacer el equipo', 403);
+    const last = db.prepare("SELECT id, detail FROM application_events WHERE application_id = ? AND event = 'equipo' ORDER BY id DESC LIMIT 1").get(id);
+    if (!last) throw bad('No hay ningún cambio de equipo que deshacer');
+    const oldTeamId = Number(String(last.detail).split('::')[0]);
+    if (!Number.isInteger(oldTeamId) || oldTeamId <= 0) throw bad('No se pudo deshacer ese cambio de equipo');
+    const a = fullApp(id);
+    const team = findSelectable(oldTeamId, a.city_id);
+    if (!team) throw bad('El equipo anterior ya no está disponible en esta ciudad');
+    db.prepare('DELETE FROM application_events WHERE id = ?').run(last.id);
+    db.prepare('UPDATE applications SET team_id=?, updated_at=? WHERE id=?').run(team.id, now(), id);
+    res.json({ ok: true, team_id: team.id });
+  });
+
   /** Deshace el último «Contactar» (seguimiento de Bases o de GC): quita el contacto más reciente que él mismo marcó. */
   r.post('/applications/:id/undo-contact', (req, res) => {
     const id = Number(req.params.id);
@@ -248,11 +285,17 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     res.json({ ok: true });
   });
 
-  /** Deshace el último cambio de estado (Contacté/Visitó/Resolver/No continúa), volviendo al estado anterior. */
-  r.post('/applications/:id/undo-status', (req, res) => {
+  /**
+   * Deshace el último cambio de estado (Contacté/Visitó/Resolver/No continúa), volviendo al estado anterior. Si
+   * lo que se deshace es un «Resolver» (confirmado), también borra la nota que se había escrito en su ficha de
+   * Planning Center — si no se puede borrar (p. ej. Planning Center no responde), no bloquea el resto: queda
+   * anotado como error para revisarlo a mano.
+   */
+  r.post('/applications/:id/undo-status', wrap(async (req, res) => {
     const id = Number(req.params.id);
     if (!canTouch(req.user, id)) throw bad('No encontrada', 404);
     if (!['admin', 'city_admin', 'leader'].includes(req.user.role)) throw bad('No tienes permiso para deshacer el estado', 403);
+    const before = fullApp(id);
     const last = db.prepare("SELECT id FROM application_events WHERE application_id = ? AND event = 'status' ORDER BY id DESC LIMIT 1").get(id);
     if (!last) throw bad('No hay ningún cambio de estado que deshacer');
     db.prepare('DELETE FROM application_events WHERE id = ?').run(last.id);
@@ -260,8 +303,19 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
     const status = prev?.detail && STATUSES.includes(prev.detail) ? prev.detail : 'listo';
     const followup = status === 'contactado' || status === 'visito' ? inDays(FOLLOWUP_DAYS) : null;
     db.prepare('UPDATE applications SET status=?, followup_at=?, updated_at=? WHERE id=?').run(status, followup, now(), id);
+    if (before.status === 'confirmado') {
+      const noteEv = db.prepare("SELECT id, detail FROM application_events WHERE application_id = ? AND event = 'nota_pco' ORDER BY id DESC LIMIT 1").get(id);
+      if (noteEv) {
+        try {
+          await pco.deleteNote(noteEv.detail);
+          db.prepare('DELETE FROM application_events WHERE id = ?').run(noteEv.id);
+        } catch (e) {
+          logEvent(id, null, 'nota_error', `No se pudo borrar la nota de Planning Center al deshacer: ${e.message}`);
+        }
+      }
+    }
     res.json({ ok: true, status });
-  });
+  }));
 
   r.patch('/applications/:id', wrap(async (req, res) => {
     const id = Number(req.params.id);
@@ -278,17 +332,23 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
       db.prepare('UPDATE applications SET status=?, followup_at=?, updated_at=? WHERE id=?').run(status, followup, now(), id);
       logEvent(id, req.user.id, 'status', status);
       if (status === 'confirmado' && a.pco_person_id) {
-        pco.addNote(a.pco_person_id, `Confirmado como miembro del equipo ${a.team_name} (${a.city})`, 'Interesado en servir').catch((e) => logEvent(id, null, 'nota_error', e.message));
+        try {
+          const noteId = await pco.addNote(a.pco_person_id, `Confirmado como miembro del equipo ${a.team_name} (${a.city})`, 'Interesado en servir');
+          logEvent(id, null, 'nota_pco', noteId);
+        } catch (e) {
+          logEvent(id, null, 'nota_error', e.message);
+        }
       }
     }
-    // Cambiar de equipo (administración y seguimiento de Equipos), a otro disponible en la misma ciudad.
+    // Cambiar de equipo (administración y seguimiento de Equipos), a otro disponible en la misma ciudad. El
+    // equipo de origen viaja al principio del detalle (antes de «::») para poder deshacerlo más tarde.
     if (team_id !== undefined) {
       if (!canManageStatus) throw bad('No tienes permiso para cambiar el equipo', 403);
       const team = findSelectable(Number(team_id), a.city_id);
       if (!team) throw bad('Ese equipo no está disponible en esta ciudad');
       if (team.id !== a.team_id) {
         db.prepare('UPDATE applications SET team_id=?, updated_at=? WHERE id=?').run(team.id, now(), id);
-        logEvent(id, req.user.id, 'equipo', `${a.team_name} → ${team.name}`);
+        logEvent(id, req.user.id, 'equipo', `${a.team_id}::${a.team_name} → ${team.name}`);
       }
     }
     // Que Bases o GC marquen que han contactado (o administración/Equipos en su lugar, indicando cuál con
@@ -310,6 +370,21 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   admin.get('/summary', requireSuperAdmin, (_req, res) => {
     const by = db.prepare('SELECT status, COUNT(*) n FROM applications GROUP BY status').all();
     res.json({ by_status: Object.fromEntries(by.map((x) => [x.status, x.n])) });
+  });
+
+  // Historial de sincronizaciones con Planning Center: fichas encontradas, notas escritas y errores (de sincronizar
+  // los cursos o de escribir/borrar la nota). El admin total lo ve todo; el de ciudad, solo el de su ciudad.
+  const SYNC_EVENTS = ['pco_enlazada', 'nota_pco', 'nota_error', 'pco_error'];
+  const SYNC_LABEL = { pco_enlazada: 'Ficha encontrada en Planning Center', nota_pco: 'Nota escrita en Planning Center', nota_error: 'Error con la nota de Planning Center', pco_error: 'Error al sincronizar con Planning Center' };
+  admin.get('/sync-log', (req, res) => {
+    const cityWhere = req.user.role === 'city_admin' ? 'AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)' : '';
+    const params = req.user.role === 'city_admin' ? [req.user.id] : [];
+    const placeholders = SYNC_EVENTS.map(() => '?').join(',');
+    const rows = db.prepare(`SELECT e.id, e.event, e.detail, e.created_at, a.id AS application_id, a.name, a.city_id, c.name AS city
+                              FROM application_events e JOIN applications a ON a.id = e.application_id JOIN cities c ON c.id = a.city_id
+                              WHERE e.event IN (${placeholders}) ${cityWhere}
+                              ORDER BY e.id DESC LIMIT 300`).all(...SYNC_EVENTS, ...params);
+    res.json(rows.map((r) => ({ ...r, label: SYNC_LABEL[r.event] || r.event, is_error: r.event === 'nota_error' || r.event === 'pco_error' })));
   });
 
   admin.post('/applications/:id/reprocess', wrap(async (req, res) => {
