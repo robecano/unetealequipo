@@ -138,6 +138,9 @@ async function applicationsView(box) {
     const f = SORTERS[sortKey];
     return [...rows].sort((x, y) => { const vx = f(x), vy = f(y); return (vx > vy ? 1 : vx < vy ? -1 : 0) * sortDir; });
   };
+  // Cuántas hay con los filtros actuales (toda la lista, o lo que quede tras filtrar/buscar)
+  const countLabel = h('span', { class: 'muted' });
+  const setCount = (n) => { countLabel.textContent = `${n} solicitud${n === 1 ? '' : 'es'}`; };
   // Descarga en CSV con los mismos filtros que estás viendo (estado, categoría, ciudad y búsqueda)
   const exportLink = h('a', { class: 'mini export', download: '' }, '⬇ Exportar CSV');
   const setExport = (n) => {
@@ -235,6 +238,7 @@ async function applicationsView(box) {
     const fresh = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}${cityFilter ? `&city=${encodeURIComponent(cityFilter.value)}` : ''}`);
     if (seq !== loadSeq) return; // ya hay una petición más nueva en marcha: se descarta esta
     rows = fresh;
+    setCount(rows.length);
     setExport(rows.length);
     draw();
   });
@@ -248,7 +252,7 @@ async function applicationsView(box) {
     toast(`Actualizado con Planning Center: ${res.refreshed} de ${res.total} solicitudes.`);
     load();
   }) }, 'Actualizar Planning Center (toda la lista)');
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, cityFilter, exportLink, bulkRefresh), body);
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, cityFilter, exportLink, bulkRefresh, countLabel), body);
   load();
 }
 
