@@ -182,7 +182,7 @@ async function applicationsView(box) {
           canManageStatus ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-team`, { method: 'POST' }); load(); }) }, 'Deshacer equipo') : null, teamEditBox),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status),
           h('div', { class: 'muted' }, 'Le toca: ', h('span', { class: 'pill' }, NEXT_STEP[a.next_step] || a.next_step)),
-          a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
+          a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Límite de contacto semanal: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
           // Solo administración (total o de ciudad): si falta asignar seguimiento de Equipos, de Bases o de GC
           isAdminLike && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Equipo asignado') : null,
           isAdminLike && a.basesLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Bases asignado') : null,
