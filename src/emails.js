@@ -127,18 +127,4 @@ function gcDigestEmail({ city, nuevas, seguimiento, resto }, cityId) {
   }, undefined, cityId);
 }
 
-/** Aviso a administración cuando una ciudad se queda sin nadie de seguimiento de Equipos asignado. */
-function adminNoLeaderEmail({ app }, cityId) {
-  return render('admin_no_leader', {
-    vars: { nombre_completo: app.name, telefono: app.phone, equipo: app.team, ciudad: app.city || '' },
-  }, undefined, cityId);
-}
-
-/** Aviso a administración cuando una ciudad se queda sin líder de Bases o de GC. `tipo`: 'Bases' o 'GC'. */
-function adminNoRoleLeaderEmail({ app, tipo }, cityId) {
-  return render('admin_no_role_leader', {
-    vars: { nombre_completo: app.name, telefono: app.phone, equipo: app.team, ciudad: app.city || '', tipo },
-  }, undefined, cityId);
-}
-
-module.exports = { applicantEmail, leaderDigestEmail, basesDigestEmail, gcDigestEmail, adminNoLeaderEmail, adminNoRoleLeaderEmail };
+module.exports = { applicantEmail, leaderDigestEmail, basesDigestEmail, gcDigestEmail };

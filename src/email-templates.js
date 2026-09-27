@@ -20,7 +20,6 @@ const btn = (href, label) =>
 const VARS = {
   nombre: { desc: 'Nombre de pila de la persona' },
   nombre_completo: { desc: 'Nombre y apellidos' },
-  telefono: { desc: 'Teléfono de la persona' },
   equipo: { desc: 'Equipo elegido (Área › Subequipo)' },
   ciudad: { desc: 'Ciudad' },
   cursos: { desc: 'Bases 1, Bases 2 y GC: «Bases 1: Sí · Bases 2: No · GC: Sí»' },
@@ -34,7 +33,6 @@ const VARS = {
   seccion_nuevas: { desc: 'Personas nuevas desde el último envío (solo si hay alguna)', block: true },
   seccion_seguimiento: { desc: 'A quien toca hacer una llamada de seguimiento (solo si hay alguien)', block: true },
   seccion_resto: { desc: 'El resto de la lista abierta (solo si hay alguien)', block: true },
-  tipo: { desc: '«Bases» o «GC»: qué tipo de líder falta' },
 };
 // Condicionales: {{#bases}}texto{{/bases}} solo se muestra si se cumple.
 const FLAGS = {
@@ -83,22 +81,8 @@ const TEMPLATES = {
     subject: 'Tu lista de GC · {{ciudad}}', heading: 'Grupos de Conexión (GC)',
     body: `Estas personas de {{ciudad}} ya tienen Bases 1 y les falta un Grupo de Conexión: llámalas para explicarles la importancia de los GC, qué son y cómo funcionan, e invítalas a apuntarse (hillsong.es/gc).\n\n{{seccion_nuevas}}\n\n{{seccion_seguimiento}}\n\n{{seccion_resto}}\n\n${FOOT}`,
   },
-  admin_no_leader: {
-    group: 'admin', title: 'Sin seguimiento de Equipos asignado', to: 'Administración',
-    when: 'En cuanto llega una solicitud a una ciudad sin nadie de seguimiento de Equipos asignado. Sin este aviso, nadie se enteraría de esa solicitud hasta que se asigne a alguien.',
-    vars: ['nombre_completo', 'telefono', 'equipo', 'ciudad', 'url_panel'], flags: [], required: ['nombre_completo', 'ciudad'],
-    subject: 'Sin seguimiento de Equipos en {{ciudad}}', heading: 'Falta seguimiento de Equipos',
-    body: `**{{nombre_completo}}** ({{telefono}}) quiere servir en **{{equipo}}** en {{ciudad}} y no hay nadie de seguimiento de Equipos asignado en esa ciudad.\n\nAsigna a alguien de seguimiento de Equipos para que pueda contactar con esta persona.\n\n${FOOT}`,
-  },
-  admin_no_role_leader: {
-    group: 'admin', title: 'Sin líder de Bases o de GC asignado', to: 'Administración',
-    when: 'En cuanto llega una solicitud en una ciudad sin líder de Bases o de GC asignado, si le corresponde a uno de ellos. Sin este aviso, nadie se enteraría de esa solicitud.',
-    vars: ['nombre_completo', 'telefono', 'equipo', 'ciudad', 'tipo', 'url_panel'], flags: [], required: ['nombre_completo', 'ciudad', 'tipo'],
-    subject: 'Sin líder de {{tipo}} en {{ciudad}}', heading: 'Falta un líder',
-    body: `**{{nombre_completo}}** ({{telefono}}) del equipo **{{equipo}}** en {{ciudad}} necesita que le llame un líder de **{{tipo}}**, y no hay ninguno asignado en esa ciudad.\n\nAsigna un líder de {{tipo}} para que pueda contactar con esta persona.\n\n${FOOT}`,
-  },
 };
-const GROUPS = { persona: 'A la persona que se apunta', lider: 'A seguimiento de Equipos', bases: 'A seguimiento de Bases', gc: 'A seguimiento de GC', admin: 'A la administración' };
+const GROUPS = { persona: 'A la persona que se apunta', lider: 'A seguimiento de Equipos', bases: 'A seguimiento de Bases', gc: 'A seguimiento de GC' };
 
 // ---------- Lectura y validación ----------
 /** El texto de cada email es uno por ciudad. Sin fila para esa ciudad, se usa el original del código. */

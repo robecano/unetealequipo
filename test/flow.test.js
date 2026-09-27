@@ -9,7 +9,6 @@ process.env.SESSION_SECRET = 'x'.repeat(40);
 process.env.PANEL_PASSWORD = 'HillsongEspana';
 process.env.ADMIN_EMAIL = 'admin@test.es';
 process.env.ADMIN_PASSWORD = 'admin-pass';
-process.env.ADMIN_NOTIFY_EMAIL = 'admin@test.es';
 
 const { db } = require('../src/db');
 const { createFlow } = require('../src/flow');
@@ -133,18 +132,15 @@ test('sin ficha en Planning Center: aunque declare algo, no se le pide pasar por
   assert.doesNotMatch(persona.html, /Contrastando con Planning Center/);
 });
 
-test('sin seguimiento de Equipos en la ciudad: se avisa a la administración (con la plantilla editable) y no a nadie más', async () => {
+test('sin seguimiento de Equipos en la ciudad: no se avisa a nadie (ya no hay aviso a administración); solo el email a la propia persona', async () => {
   reset(); person = { id: '58' }; course = { bases1: true, bases2: true, gc: true };
   // Ciudad nueva, sin nadie de seguimiento de Equipos asignado (el líder del módulo está en Madrid, no aquí)
   const cSinSeguimiento = Number(db.prepare("INSERT INTO cities (name) VALUES ('Sin Seguimiento Equipos')").run().lastInsertRowid);
   const otherTeam = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo Sin Seguimiento')").run().lastInsertRowid);
   const id = Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months) VALUES ('Ana Ruiz','anasinseguimiento@x.es','600111222',?,?,24)`).run(cSinSeguimiento, otherTeam).lastInsertRowid);
   await flow.process(id);
-  assert.equal(to('admin@test.es').length, 1);
-  const aviso = to('admin@test.es')[0];
-  assert.match(aviso.subject, /Sin seguimiento de Equipos en Sin Seguimiento Equipos/);
-  assert.match(aviso.html, /Ana Ruiz/);
-  assert.match(aviso.html, /600111222/);
+  assert.equal(to('admin@test.es').length, 0);
+  assert.equal(sent.length, 1, 'solo el aviso a la propia persona');
 });
 
 test('error de Planning Center: la solicitud queda «recibida» para reintentar, y no se envía nada', async () => {
@@ -326,7 +322,7 @@ test('resumen: el líder de Bases y el de GC reciben su lista por ciudad (de cua
   assert.match(equipoAMail.html, /Todo Hecho/);
 });
 
-test('sin líder de Bases o de GC en la ciudad: se avisa a administración con la plantilla propia, y no si ya hay uno', async () => {
+test('sin líder de Bases o de GC en la ciudad: no se avisa a administración (ya no existe ese aviso)', async () => {
   const c4 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Sin Bases Ni GC')").run().lastInsertRowid);
   const t4 = Number(db.prepare("INSERT INTO teams (name) VALUES ('Equipo Huérfano')").run().lastInsertRowid);
   const l4 = Number(db.prepare("INSERT INTO users (email, role) VALUES ('equipo4@test.es', 'leader')").run().lastInsertRowid);
@@ -338,16 +334,5 @@ test('sin líder de Bases o de GC en la ciudad: se avisa a administración con l
   reset(); person = { id: '59' }; course = { bases1: false, bases2: false, gc: false };
   const id = applyIn(c4, t4, 'ana4a@x.es');
   await flow.process(id);
-  const avisos = to('admin@test.es');
-  assert.equal(avisos.length, 1, 'le falta Bases (no GC, porque para GC hace falta Bases 1 primero): un solo aviso');
-  assert.match(avisos[0].subject, /Sin líder de Bases en Sin Bases Ni GC/);
-  assert.match(avisos[0].html, /Ana Ruiz/);
-
-  // ahora sí hay un líder de Bases en esa ciudad: no se vuelve a avisar
-  const lBases4 = Number(db.prepare("INSERT INTO users (email, role) VALUES ('bases4@test.es', 'bases')").run().lastInsertRowid);
-  db.prepare('INSERT INTO user_cities VALUES (?,?)').run(lBases4, c4);
-  reset();
-  const id2 = applyIn(c4, t4, 'ana4b@x.es');
-  await flow.process(id2);
-  assert.equal(to('admin@test.es').length, 0, 'ya hay líder de Bases: no hace falta avisar');
+  assert.equal(to('admin@test.es').length, 0, 'le falta Bases, pero eso ya no genera ningún aviso a administración');
 });

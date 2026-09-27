@@ -99,26 +99,6 @@ function createFlow({ pco, mail }) {
     }
   }
 
-  /**
-   * Nadie recibe un email por cada solicitud: se ve en la lista programada (sendDigests) y en el panel en todo
-   * momento. Si la ciudad no tiene a nadie de seguimiento de equipos asignado, se avisa a administración para
-   * que lo asigne (si no, nadie se enteraría de esa solicitud hasta que alguien mire el panel).
-   */
-  async function alertIfNoLeader(id) {
-    const a = fullApp(id);
-    if (roleLeadersFor('leader', a.city_id).length) return;
-    const msg = emails.adminNoLeaderEmail({ app: forTemplate(a) }, a.city_id);
-    return safeMail(id, `aviso admin: sin seguimiento de equipos en ${a.city}`, msg, config.adminNotifyEmail);
-  }
-
-  /** Igual que alertIfNoLeader, pero para el de Bases o de GC de la ciudad, solo si de verdad le toca. */
-  async function alertIfNoRoleLeader(id, role, tipo, needsIt) {
-    const a = fullApp(id);
-    if (!needsIt(a) || roleLeadersFor(role, a.city_id).length) return;
-    const msg = emails.adminNoRoleLeaderEmail({ app: forTemplate(a), tipo }, a.city_id);
-    return safeMail(id, `aviso admin: sin líder de ${tipo} en ${a.city}`, msg, config.adminNotifyEmail);
-  }
-
   async function process(id) {
     let a = fullApp(id);
     if (!a || a.status !== 'recibida') return a?.status;
@@ -171,9 +151,6 @@ function createFlow({ pco, mail }) {
 
     await writeNotes(id);
     await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, mismatched, notFoundInPco: !person }, after.city_id), a.email);
-    await alertIfNoLeader(id);
-    await alertIfNoRoleLeader(id, 'bases', 'Bases', courses.needsBases);
-    await alertIfNoRoleLeader(id, 'gc', 'GC', courses.needsGc);
     return 'listo';
   }
 

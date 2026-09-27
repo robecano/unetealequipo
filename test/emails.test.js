@@ -9,7 +9,6 @@ process.env.SESSION_SECRET = 'e'.repeat(40);
 process.env.PANEL_PASSWORD = 'HillsongEspana';
 process.env.ADMIN_EMAIL = 'admin@test.es';
 process.env.ADMIN_PASSWORD = 'admin-pass';
-process.env.ADMIN_NOTIFY_EMAIL = 'admin@test.es';
 
 const { db } = require('../src/db');
 const et = require('../src/email-templates');
@@ -157,7 +156,7 @@ test('solo administración (total o de ciudad) ve y edita los emails', async () 
   assert.equal((await fetch(base + '/api/panel/admin/emails')).status, 401);
   const data = await (await req('admin', 'GET', '/api/panel/admin/emails')).json();
   assert.equal(data.templates.length, Object.keys(et.TEMPLATES).length);
-  assert.deepEqual(Object.keys(data.groups), ['persona', 'lider', 'bases', 'gc', 'admin']);
+  assert.deepEqual(Object.keys(data.groups), ['persona', 'lider', 'bases', 'gc']);
   assert.equal(data.city_id, cityId, 'única ciudad que existe: se elige por defecto');
 });
 
@@ -179,42 +178,6 @@ test('guardar un email: se valida, se usa al enviar y se puede restaurar (un tex
   const back = await (await req('admin', 'DELETE', `/api/panel/admin/emails/leader_digest?city_id=${cityId}`)).json();
   assert.equal(back.customized, false);
   assert.match(emails.leaderDigestEmail({ city: { name: 'Madrid' }, nuevas: [person], seguimiento: [], resto: [] }, cityId).subject, /^Tu lista/);
-});
-
-test('el aviso a administración de «sin seguimiento de Equipos» también es editable', async () => {
-  const app = { name: 'Ana Ruiz', phone: '+34 600 111 222', team: 'Cafetería', city: 'Madrid' };
-  const original = emails.adminNoLeaderEmail({ app }, cityId);
-  assert.match(original.subject, /^Sin seguimiento de Equipos/);
-  assert.match(original.html, /Ana Ruiz/);
-  assert.match(original.html, /600 111 222/);
-
-  const good = { subject: 'FALTA SEGUIMIENTO: {{ciudad}}', heading: 'Ojo', body: 'Nadie puede atender a {{nombre_completo}} ({{telefono}}) en {{equipo}}, {{ciudad}}.', enabled: true };
-  assert.equal((await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_leader?city_id=${cityId}`, { ...good, body: 'sin el nombre ni la ciudad' })).status, 400);
-  const saved = await (await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_leader?city_id=${cityId}`, good)).json();
-  assert.equal(saved.customized, true);
-  const edited = emails.adminNoLeaderEmail({ app }, cityId);
-  assert.equal(edited.subject, 'FALTA SEGUIMIENTO: Madrid');
-  assert.match(edited.html, /Nadie puede atender a Ana Ruiz/);
-
-  await req('admin', 'DELETE', `/api/panel/admin/emails/admin_no_leader?city_id=${cityId}`);
-});
-
-test('el aviso a administración de «sin líder de Bases o de GC» también es editable', async () => {
-  const app = { name: 'Ana Ruiz', phone: '+34 600 111 222', team: 'Cafetería', city: 'Madrid' };
-  const original = emails.adminNoRoleLeaderEmail({ app, tipo: 'Bases' }, cityId);
-  assert.equal(original.subject, 'Sin líder de Bases en Madrid');
-  assert.match(original.html, /Ana Ruiz/);
-  assert.match(original.html, /Cafetería/);
-
-  const good = { subject: 'FALTA {{tipo}}: {{ciudad}}', heading: 'Ojo', body: 'Nadie de {{tipo}} puede atender a {{nombre_completo}} en {{ciudad}}.', enabled: true };
-  assert.equal((await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_role_leader?city_id=${cityId}`, { ...good, body: 'sin el nombre ni la ciudad' })).status, 400);
-  const saved = await (await req('admin', 'PUT', `/api/panel/admin/emails/admin_no_role_leader?city_id=${cityId}`, good)).json();
-  assert.equal(saved.customized, true);
-  const edited = emails.adminNoRoleLeaderEmail({ app, tipo: 'GC' }, cityId);
-  assert.equal(edited.subject, 'FALTA GC: Madrid');
-  assert.match(edited.html, /Nadie de GC puede atender a Ana Ruiz/);
-
-  await req('admin', 'DELETE', `/api/panel/admin/emails/admin_no_role_leader?city_id=${cityId}`);
 });
 
 test('un email desactivado no se envía, y queda anotado', async () => {

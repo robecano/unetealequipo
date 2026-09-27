@@ -409,7 +409,7 @@ async function usersView(box) {
 
 // ---------- Emails (administración total o de ciudad: un texto por ciudad) ----------
 const DAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const GROUP_ICON = { persona: '🙋', lider: '📞', bases: '📚', gc: '🤝', admin: '🛠️' };
+const GROUP_ICON = { persona: '🙋', lider: '📞', bases: '📚', gc: '🤝' };
 
 async function emailsView(box) {
   let data = await api('/panel/admin/emails');

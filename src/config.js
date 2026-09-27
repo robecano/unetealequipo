@@ -27,7 +27,6 @@ const config = {
   panelPassword: process.env.PANEL_PASSWORD || '',
   adminEmail: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || '',
-  adminNotifyEmail: process.env.ADMIN_NOTIFY_EMAIL || process.env.ADMIN_EMAIL || '',
   noteCategoryName: process.env.NOTE_CATEGORY_NAME || 'Interesado en servir',
   fields: {
     bases1: process.env.FIELD_BASES1 || 'Bases 1',
