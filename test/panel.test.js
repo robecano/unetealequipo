@@ -523,17 +523,40 @@ test('filtro de categoría (falta Bases 1/2/GC, completo): filtra el panel y el 
   const faltaB2 = apply('Cat Falta B2', teamA, { city: c5, pcoBases1: 1, pcoBases2: 0, pcoGc: 1 });
   const faltaGc = apply('Cat Falta GC', teamA, { city: c5, pcoBases1: 1, pcoBases2: 1, pcoGc: 0 });
   const completo = apply('Cat Completo', teamA, { city: c5, pcoBases1: 1, pcoBases2: 1, pcoGc: 1 });
+  // Autodeclarado no basta para «completo»: tiene que estar de verdad confirmado por Planning Center, los tres.
+  const declaradoSinPco = apply('Cat Declarado Sin PCO', teamA, { city: c5, pcoBases1: 1, pcoBases2: 0, selfBases2: 1, pcoGc: 1 });
 
   const byCategory = async (category) => (await (await req('admin', 'GET', `/api/panel/applications?category=${category}&q=Cat`)).json()).map((r) => r.name);
   assert.deepEqual(await byCategory('falta_bases1'), ['Cat Falta B1']);
-  assert.deepEqual(await byCategory('falta_bases2'), ['Cat Falta B2']);
+  assert.deepEqual(await byCategory('falta_bases2'), ['Cat Declarado Sin PCO', 'Cat Falta B2']);
   assert.deepEqual(await byCategory('falta_gc'), ['Cat Falta GC']);
-  assert.deepEqual(await byCategory('completo'), ['Cat Completo']);
-  assert.equal((await byCategory('')).length, 4, 'sin categoría: los cuatro');
+  assert.deepEqual(await byCategory('completo'), ['Cat Completo'], 'lo autodeclarado no cuenta como completo: hace falta que PCO lo confirme');
+  assert.equal((await byCategory('')).length, 5, 'sin categoría: las cinco');
 
   const csv = await (await req('admin', 'GET', '/api/panel/applications.csv?category=completo&q=Cat')).text();
   assert.match(csv, /Cat Completo/);
   assert.doesNotMatch(csv, /Cat Falta/);
+});
+
+test('filtro de ciudad: administración total puede filtrar el panel, el CSV y el refresco en bloque por una ciudad', async () => {
+  const c6 = Number(db.prepare("INSERT INTO cities (name) VALUES ('Filtro Ciudad')").run().lastInsertRowid);
+  apply('En Filtro Ciudad', teamA, { city: c6 });
+  apply('Fuera De Filtro Ciudad', teamA, { city });
+
+  const rows = await (await req('admin', 'GET', `/api/panel/applications?city=${c6}`)).json();
+  assert.ok(rows.every((r) => r.city === 'Filtro Ciudad'));
+  assert.ok(rows.some((r) => r.name === 'En Filtro Ciudad'));
+
+  const csv = await (await req('admin', 'GET', `/api/panel/applications.csv?city=${c6}`)).text();
+  assert.match(csv, /En Filtro Ciudad/);
+  assert.doesNotMatch(csv, /Fuera De Filtro Ciudad/);
+
+  const bulk = await (await req('admin', 'POST', '/api/panel/applications/refresh-pco', { city: c6 })).json();
+  assert.equal(bulk.total, rows.length, 'el refresco en bloque respeta el mismo filtro de ciudad');
+
+  // A quien ya está limitado a su ciudad, filtrar por otra ciudad no le amplía el ámbito: se queda en cero
+  const rowsLeader = await (await req('leader', 'GET', `/api/panel/applications?city=${c6}`)).json();
+  assert.equal(rowsLeader.length, 0, 'seguimiento de Equipos no ve otra ciudad aunque la pida por filtro');
 });
 
 test('Bases y GC no pueden cambiar el estado ni borrar (solo el líder de equipo y admin); comentar sí les deja', async () => {

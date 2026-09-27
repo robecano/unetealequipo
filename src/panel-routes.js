@@ -32,15 +32,19 @@ const ids = (arr) => [...new Set((Array.isArray(arr) ? arr : []).map(Number).fil
 const SQL_ACCEPTED = (k) => `(a.pco_${k} = 1 OR a.self_${k} = 1)`;
 // «Falta según PCO» en SQL, misma regla que courses.pcoOk negada: IFNULL trata sin ficha (NULL) también como que falta.
 const SQL_PCO_MISSING = (k) => `IFNULL(a.pco_${k}, 0) != 1`;
+// «Confirmado por PCO» en SQL, misma regla que courses.pcoOk (sin contar lo autodeclarado).
+const SQL_PCO_OK = (k) => `IFNULL(a.pco_${k}, 0) = 1`;
 // Mismas reglas que courses.needsBases/needsGc: incluye a quien lo autodeclaró pero Planning Center no lo confirma.
 const SQL_NEEDS_BASES = `(${SQL_PCO_MISSING('bases1')} OR ${SQL_PCO_MISSING('bases2')})`;
 const SQL_NEEDS_GC = `(${SQL_ACCEPTED('bases1')} AND ${SQL_PCO_MISSING('gc')})`;
-// Categorías del filtro de administración: en qué falta (según PCO, como Bases/GC) o si está completo (regla laxa, como el resto del sistema).
+// Categorías del filtro de administración: en qué falta (según PCO, como Bases/GC) o si está completo. «Completo»
+// exige que las tres cosas estén confirmadas por Planning Center (no basta con lo autodeclarado): así es la
+// única categoría en la que de verdad no falta nada, ni siquiera un dato pendiente de contrastar.
 const CATEGORY_SQL = {
   falta_bases1: SQL_PCO_MISSING('bases1'),
   falta_bases2: SQL_PCO_MISSING('bases2'),
   falta_gc: SQL_NEEDS_GC,
-  completo: `(${SQL_ACCEPTED('bases1')} AND ${SQL_ACCEPTED('bases2')} AND ${SQL_ACCEPTED('gc')})`,
+  completo: `(${SQL_PCO_OK('bases1')} AND ${SQL_PCO_OK('bases2')} AND ${SQL_PCO_OK('gc')})`,
 };
 
 /**
@@ -68,11 +72,15 @@ function roleLeadersOf(role, cityId) {
   return roleLeadersStmt.all(cityId, role);
 }
 
-function visibleApplications(user, { status, q, category } = {}, limit = 500) {
+function visibleApplications(user, { status, q, category, city } = {}, limit = 500) {
   const { where, params } = scopeOf(user);
   where.push('a.deleted_at IS NULL');
   if (status && STATUSES.includes(status)) (where.push('a.status = ?'), params.push(status));
   if (category && CATEGORY_SQL[category]) where.push(CATEGORY_SQL[category]);
+  // Filtro de ciudad: sobre todo para administración total, que ve todas mezcladas; para quien ya está
+  // limitado a su ámbito (admin de ciudad, Equipos, Bases, GC) solo estrecha dentro de lo que ya vería.
+  const cityId = Number(city);
+  if (Number.isInteger(cityId) && cityId > 0) (where.push('a.city_id = ?'), params.push(cityId));
   if (q) (where.push('(a.name LIKE ? OR a.email LIKE ? OR a.phone LIKE ?)'), params.push(...Array(3).fill(`%${q}%`)));
   const rows = db.prepare(`SELECT a.id, a.created_at, a.updated_at, a.name, a.email, a.phone, a.status, a.followup_at, a.tenure_months,
                        a.pco_person_id, a.pco_bases1, a.pco_bases2, a.pco_gc, a.self_bases1, a.self_bases2, a.self_gc, a.error, a.team_id, a.city_id, a.gc_group_name,
@@ -188,14 +196,14 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
   r.use(requireAuth);
 
   r.get('/applications.csv', (req, res) => {
-    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), category: str(req.query.category, 20) }, 20000);
+    const rows = visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), category: str(req.query.category, 20), city: req.query.city }, 20000);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="solicitudes-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.setHeader('Cache-Control', 'no-store');
     res.send(applicationsCsv(rows, { withLeaders: ['admin', 'city_admin'].includes(req.user.role) }));
   });
 
-  r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), category: str(req.query.category, 20) })));
+  r.get('/applications', (req, res) => res.json(visibleApplications(req.user, { status: req.query.status, q: str(req.query.q, 60), category: str(req.query.category, 20), city: req.query.city })));
 
   r.get('/applications/:id', (req, res) => {
     const id = Number(req.params.id);
@@ -221,7 +229,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
    * las solicitudes del sistema): refresca cada una y dice cuántas se han podido comprobar.
    */
   r.post('/applications/refresh-pco', wrap(async (req, res) => {
-    const rows = visibleApplications(req.user, { status: str(req.body?.status, 20), q: str(req.body?.q, 60), category: str(req.body?.category, 20) }, 20000);
+    const rows = visibleApplications(req.user, { status: str(req.body?.status, 20), q: str(req.body?.q, 60), category: str(req.body?.category, 20), city: req.body?.city }, 20000);
     const refreshed = await flow.refreshMany(rows.map((a) => a.id));
     res.json({ ok: true, refreshed, total: rows.length });
   }));

@@ -102,6 +102,12 @@ async function applicationsView(box) {
   const isAdminLike = ['admin', 'city_admin'].includes(me.role);
   const canManageStatus = ['admin', 'city_admin', 'leader'].includes(me.role);
   const cat = isAdminLike ? h('select', {}, h('option', { value: '' }, 'Todas las categorías'), ...Object.entries(CATEGORY).map(([k, v]) => h('option', { value: k }, v))) : null;
+  // Filtro de ciudad: sobre todo para administración total, que las ve todas mezcladas.
+  const cityFilter = isAdminLike ? h('select', {}, h('option', { value: '' }, 'Todas las ciudades')) : null;
+  if (isAdminLike) {
+    const cities = await api('/panel/admin/cities');
+    cityFilter.append(...cities.map((c) => h('option', { value: c.id }, c.name)));
+  }
   const body = h('div');
   const isRoleLeader = ['bases', 'gc'].includes(me.role);
   const infoHeader = isRoleLeader ? 'Qué le falta' : 'Verificado en PCO';
@@ -120,7 +126,7 @@ async function applicationsView(box) {
   let sortKey = null, sortDir = 1;
   const SORTERS = {
     persona: (a) => (a.name || '').toLowerCase(),
-    equipo: (a) => `${a.team || ''} ${a.city || ''}`.toLowerCase(),
+    equipo: (a) => `${a.city || ''} ${a.team || ''}`.toLowerCase(),
     estado: (a) => STATUS[a.status] || a.status,
     b1: (a) => (accepted(a.pco_bases1, a.self_bases1) ? 1 : 0),
     gc: (a) => (accepted(a.pco_gc, a.self_gc) ? 1 : 0),
@@ -132,10 +138,10 @@ async function applicationsView(box) {
     const f = SORTERS[sortKey];
     return [...rows].sort((x, y) => { const vx = f(x), vy = f(y); return (vx > vy ? 1 : vx < vy ? -1 : 0) * sortDir; });
   };
-  // Descarga en CSV con los mismos filtros que estás viendo (estado, categoría y búsqueda)
+  // Descarga en CSV con los mismos filtros que estás viendo (estado, categoría, ciudad y búsqueda)
   const exportLink = h('a', { class: 'mini export', download: '' }, '⬇ Exportar CSV');
   const setExport = (n) => {
-    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}`;
+    exportLink.href = `/api/panel/applications.csv?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}${cityFilter ? `&city=${encodeURIComponent(cityFilter.value)}` : ''}`;
     exportLink.textContent = `⬇ Exportar CSV (${n})`;
   };
   const th = (key, label) => h('th', key ? { class: 'sortable', onclick: () => { sortDir = sortKey === key ? -sortDir : 1; sortKey = key; draw(); } } : {}, label, key && sortKey === key ? (sortDir > 0 ? ' ▲' : ' ▼') : '');
@@ -182,7 +188,7 @@ async function applicationsView(box) {
           canManageStatus ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-team`, { method: 'POST' }); load(); }) }, 'Deshacer equipo') : null, teamEditBox),
         h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status),
           h('div', { class: 'muted' }, 'Le toca: ', h('span', { class: 'pill' }, NEXT_STEP[a.next_step] || a.next_step)),
-          a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Límite de contacto semanal: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
+          a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Fecha límite: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
           // Solo administración (total o de ciudad): si falta asignar seguimiento de Equipos, de Bases o de GC
           isAdminLike && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Equipo asignado') : null,
           isAdminLike && a.basesLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Bases asignado') : null,
@@ -226,7 +232,7 @@ async function applicationsView(box) {
   let loadSeq = 0;
   const load = guard(async () => {
     const seq = ++loadSeq;
-    const fresh = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}`);
+    const fresh = await api(`/panel/applications?status=${encodeURIComponent(st.value)}&q=${encodeURIComponent(q.value)}${cat ? `&category=${encodeURIComponent(cat.value)}` : ''}${cityFilter ? `&city=${encodeURIComponent(cityFilter.value)}` : ''}`);
     if (seq !== loadSeq) return; // ya hay una petición más nueva en marcha: se descarta esta
     rows = fresh;
     setExport(rows.length);
@@ -235,13 +241,14 @@ async function applicationsView(box) {
   q.addEventListener('input', () => { clearTimeout(q.t); q.t = setTimeout(load, 250); });
   st.addEventListener('change', load);
   if (cat) cat.addEventListener('change', load);
+  if (cityFilter) cityFilter.addEventListener('change', load);
   // Actualiza con Planning Center toda la lista con los filtros actuales (no solo una solicitud)
   const bulkRefresh = h('button', { class: 'mini', onclick: guard(async () => {
-    const res = await api('/panel/applications/refresh-pco', { method: 'POST', body: { status: st.value, q: q.value, category: cat ? cat.value : '' } });
+    const res = await api('/panel/applications/refresh-pco', { method: 'POST', body: { status: st.value, q: q.value, category: cat ? cat.value : '', city: cityFilter ? cityFilter.value : '' } });
     toast(`Actualizado con Planning Center: ${res.refreshed} de ${res.total} solicitudes.`);
     load();
   }) }, 'Actualizar Planning Center (toda la lista)');
-  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, exportLink, bulkRefresh), body);
+  box.replaceChildren(h('div', { class: 'toolbar' }, q, st, cat, cityFilter, exportLink, bulkRefresh), body);
   load();
 }
 
