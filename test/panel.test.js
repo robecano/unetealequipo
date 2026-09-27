@@ -105,6 +105,19 @@ test('cada solicitud lleva «Contrastado con PCO»: sin ficha, con mezcla y todo
   assert.equal(byName('Todo Bien').contrastado.ok, true);
 });
 
+test('next_step: a quién le toca ahora mismo, según Planning Center (mismas reglas que reparten Bases y GC)', async () => {
+  apply('Toca Bases NS', teamA, { pcoBases1: 0, pcoBases2: 1, pcoGc: 1 });
+  apply('Toca Bases2 NS', teamA, { pcoBases1: 1, pcoBases2: 0, pcoGc: 1 });
+  apply('Toca GC NS', teamA, { pcoBases1: 1, pcoBases2: 1, pcoGc: 0 });
+  apply('Toca Equipo NS', teamA, { pcoBases1: 1, pcoBases2: 1, pcoGc: 1 });
+  const rows = await (await req('admin', 'GET', '/api/panel/applications')).json();
+  const byName = (n) => rows.find((r) => r.name === n);
+  assert.equal(byName('Toca Bases NS').next_step, 'bases', 'le falta Bases 1: le toca a Bases');
+  assert.equal(byName('Toca Bases2 NS').next_step, 'bases', 'le falta Bases 2 (aunque tenga Bases 1): también le toca a Bases');
+  assert.equal(byName('Toca GC NS').next_step, 'gc', 'tiene Bases 1 y 2, le falta GC: le toca a GC');
+  assert.equal(byName('Toca Equipo NS').next_step, 'equipo', 'lo tiene todo confirmado por PCO: le toca a Equipos');
+});
+
 test('borrar: el admin puede, y seguimiento de Equipos dentro de su ciudad (de cualquier equipo); se puede deshacer', async () => {
   const mine = apply('Mia Propia', teamA);
   const mismaCiudadOtroEquipo = apply('Misma Ciudad Otro Equipo', teamB);
@@ -386,8 +399,10 @@ test('el orden de las columnas de cursos es B1, GC, B2 en el CSV (como en el pan
   db.prepare('UPDATE applications SET self_bases1 = 1, self_gc = 0 WHERE id = ?').run(id);
   const [head, row] = (await (await req('admin', 'GET', '/api/panel/applications.csv?q=Orden')).text()).replace(/^﻿/, '').trim().split('\r\n');
   const h = head.split(';'); const v = row.split(';');
-  assert.deepEqual(h.slice(9, 21), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión', 'Formulario Bases 1', 'Formulario Bases 2', 'Formulario GC', 'Seguimiento de Equipos']);
-  assert.deepEqual(v.slice(9, 15), ['Sí', 'No', 'Sí', 'Sí', 'No', 'No']);
+  assert.deepEqual(h.slice(10, 22), ['Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión', 'Formulario Bases 1', 'Formulario Bases 2', 'Formulario GC', 'Seguimiento de Equipos']);
+  assert.deepEqual(v.slice(10, 16), ['Sí', 'No', 'Sí', 'Sí', 'No', 'No']);
+  assert.equal(h[8], 'Le toca a');
+  assert.equal(v[8], 'Seguimiento de GC', 'tiene Bases 1 y Bases 2, le falta GC');
   const i = h.indexOf('Verificado en PCO');
   assert.ok(i > 0);
   assert.equal(v[i], 'Sí');

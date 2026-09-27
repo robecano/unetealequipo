@@ -98,6 +98,9 @@ function visibleApplications(user, { status, q, category } = {}, limit = 500) {
     // Lo que le falta curso a curso según Planning Center (para la vista propia de seguimiento de Bases/GC)
     r.basesGaps = courses.basesGaps(r);
     r.gcGaps = courses.gcGaps(r);
+    // A quién le toca ahora mismo (según Planning Center, no lo autodeclarado): mismas reglas que reparten las
+    // listas de Bases y de GC (courses.needsBases/needsGc); si no le falta nada de eso, le toca a Equipos.
+    r.next_step = courses.needsBases(r) ? 'bases' : courses.needsGc(r) ? 'gc' : 'equipo';
     r.pco_url = r.pco_person_id ? `https://people.planningcenteronline.com/people/${r.pco_person_id}` : null;
     const d = byApp.get(r.id) || { bases: [], gc: [], comments: [] };
     r.bases_contact_dates = d.bases;
@@ -132,6 +135,7 @@ function canRestore(user, id) {
 
 const STATUS_LABEL = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', listo: 'Para contactar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
 const TENURE_LABEL = { 0: 'Menos de 6 meses', 6: '6-12 meses', 12: '1-2 años', 24: 'Más de 2 años' };
+const NEXT_STEP_LABEL = { bases: 'Seguimiento de Bases', gc: 'Seguimiento de GC', equipo: 'Seguimiento de Equipos' };
 /** Fecha en hora local (APP_TZ) y formato dd/mm/aaaa hh:mm. SQLite guarda «aaaa-mm-dd hh:mm:ss» en UTC; el resto, ISO. */
 function localDate(v, withTime = true) {
   if (!v) return '';
@@ -154,13 +158,13 @@ const leadersCell = (list) => (list || []).map((l) => [l.name || l.email, l.phon
 const contactDatesCell = (dates) => (dates || []).map((d) => localDate(d)).join(' / ');
 
 function applicationsCsv(rows, { withLeaders = false } = {}) {
-  const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Tiempo en la iglesia',
+  const head = ['ID', 'Fecha', 'Nombre', 'Email', 'Teléfono', 'Ciudad', 'Equipo', 'Estado', 'Le toca a', 'Tiempo en la iglesia',
     'Bases 1 (PCO)', 'GC (PCO)', 'Bases 2 (PCO)', 'Bases 1 (dijo)', 'GC (dijo)', 'Bases 2 (dijo)', 'Ficha Planning Center', 'Grupo de Conexión',
     'Formulario Bases 1', 'Formulario Bases 2', 'Formulario GC',
     ...(withLeaders ? ['Seguimiento de Equipos', 'Seguimiento de Bases', 'Seguimiento de GC'] : []),
     'Bases: veces contactada', 'Bases: fechas de contacto', 'GC: veces contactada', 'GC: fechas de contacto',
     'Verificado en PCO', 'Motivo si no', 'Recordatorio', 'Próximo seguimiento', 'Última actualización'];
-  const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, TENURE_LABEL[a.tenure_months] ?? '',
+  const lines = rows.map((a) => [a.id, localDate(a.created_at), a.name, a.email, a.phone, a.city, a.team, STATUS_LABEL[a.status] || a.status, NEXT_STEP_LABEL[a.next_step] || '', TENURE_LABEL[a.tenure_months] ?? '',
     yn(a.pco_bases1), yn(a.pco_gc), yn(a.pco_bases2), yn(a.self_bases1), yn(a.self_gc), yn(a.self_bases2),
     a.pco_url || '', a.gc_group_name || '',
     yn(a.form_bases1), yn(a.form_bases2), yn(a.form_gc),

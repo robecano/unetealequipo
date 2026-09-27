@@ -38,6 +38,7 @@ function toast(msg, { actionLabel, onAction, timeout = 8000 } = {}) {
 
 const STATUS = { recibida: 'Recibida', no_apto_aun: 'Aún sin antigüedad', listo: 'Para contactar', contactado: 'Contactado', visito: 'Visitó el equipo', confirmado: 'Confirmado', no_continua: 'No continúa' };
 const ROLE = { admin: 'Administración total', city_admin: 'Admin de ciudad', leader: 'Seguimiento de Equipos', bases: 'Seguimiento de Bases', gc: 'Seguimiento de GC' };
+const NEXT_STEP = { bases: 'Seguimiento de Bases', gc: 'Seguimiento de GC', equipo: 'Seguimiento de Equipos' };
 const TENURE = { 0: '< 6 meses', 6: '6–12 meses', 12: '1–2 años', 24: '> 2 años' };
 const fmtDate = (s) => (s ? new Date(s.replace(' ', 'T') + (s.includes('Z') || s.includes('+') ? '' : 'Z')).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : '');
 let me = null;
@@ -179,7 +180,9 @@ async function applicationsView(box) {
         h('td', {}, a.team, h('br'), h('span', { class: 'muted' }, a.city),
           canManageStatus ? h('br') : null, canManageStatus ? h('button', { class: 'mini', onclick: openTeamEditor }, 'Cambiar equipo') : null,
           canManageStatus ? h('button', { class: 'mini', onclick: guard(async () => { await api(`/panel/applications/${a.id}/undo-team`, { method: 'POST' }); load(); }) }, 'Deshacer equipo') : null, teamEditBox),
-        h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status), a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
+        h('td', {}, h('span', { class: `pill s-${a.status}` }, STATUS[a.status] || a.status),
+          h('div', { class: 'muted' }, 'Le toca: ', h('span', { class: 'pill' }, NEXT_STEP[a.next_step] || a.next_step)),
+          a.followup_at && ['contactado', 'visito', 'listo'].includes(a.status) ? h('div', { class: 'muted' }, `Seguimiento: ${fmtDate(a.followup_at)}`) : null, a.error ? h('div', { class: 'error' }, a.error) : null,
           // Solo administración (total o de ciudad): si falta asignar seguimiento de Equipos, de Bases o de GC
           isAdminLike && a.leaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Equipo asignado') : null,
           isAdminLike && a.basesLeaders?.length === 0 ? h('div', { class: 'no' }, 'Sin seguimiento de Bases asignado') : null,
