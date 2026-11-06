@@ -1,4 +1,5 @@
 const config = require('./config');
+const { normName } = require('./text');
 
 class PcoError extends Error {
   constructor(status, message, detail) {
@@ -117,9 +118,10 @@ async function loadCandidate(person) {
 }
 
 /**
- * Busca a la persona por email y por teléfono y elige la mejor coincidencia.
+ * Busca a la persona por email, por teléfono y por nombre completo, y elige la mejor coincidencia. Vale la misma
+ * persona si coincide el email, el teléfono o el nombre y apellidos exactos (sin contar mayúsculas ni tildes).
  * Puntúa: email igual (+2), teléfono igual (+2), nombre igual (+1). Con empate gana la ficha más antigua
- * (es la que suele tener el historial). Devuelve null si no hay ninguna que coincida en email o teléfono.
+ * (es la que suele tener el historial). Devuelve null si no hay ninguna que coincida en nada de eso.
  */
 async function findPerson({ email, phone, name }) {
   const found = new Map();
@@ -129,17 +131,89 @@ async function findPerson({ email, phone, name }) {
   }
   const wantEmail = norm(email);
   const wantPhone = phoneKey(phone);
-  const wantName = norm(name);
+  const wantName = normName(name);
+  // La búsqueda por nombre devuelve parecidos: solo se miran los que se llaman exactamente igual.
+  if (wantName.split(' ').length >= 2) {
+    const { data } = await getAll('/people/v2/people', { 'where[search_name_or_email_or_phone_number]': String(name).trim().replace(/\s+/g, ' '), per_page: 25 });
+    for (const p of data) if (normName(attrs(p).name) === wantName) found.set(String(p.id), p);
+  }
   const scored = [];
   for (const p of found.values()) {
     const c = await loadCandidate(p);
     const byEmail = wantEmail && c.emails.includes(wantEmail);
     const byPhone = wantPhone.length >= 6 && c.phones.includes(wantPhone);
-    if (!byEmail && !byPhone) continue;
-    scored.push({ ...c, score: (byEmail ? 2 : 0) + (byPhone ? 2 : 0) + (norm(c.name) === wantName ? 1 : 0) });
+    const byName = wantName.split(' ').length >= 2 && normName(c.name) === wantName;
+    if (!byEmail && !byPhone && !byName) continue;
+    scored.push({ ...c, score: (byEmail ? 2 : 0) + (byPhone ? 2 : 0) + (byName ? 1 : 0) });
   }
   scored.sort((a, b) => b.score - a.score || a.created_at.localeCompare(b.created_at));
   return scored[0] || null;
+}
+
+// ---------- Crear la ficha y meterla en el workflow «Servir En Un Equipo (ciudad)» ----------
+
+const NAME_PARTICLES = new Set(['de', 'del', 'la', 'las', 'los', 'y', 'e', 'da', 'do', 'dos', 'van', 'von']);
+/** Si el nombre viene todo en mayúsculas o todo en minúsculas se pasa a «Nombre Apellido»; si ya está mezclado, se respeta. */
+function tidyName(name) {
+  const t = String(name || '').trim().replace(/\s+/g, ' ');
+  if (t !== t.toUpperCase() && t !== t.toLowerCase()) return t;
+  return t.toLowerCase().split(' ').map((w, i) => (i > 0 && NAME_PARTICLES.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
+}
+
+/**
+ * Crea la ficha en Planning Center (nombre, email, teléfono y campus). Planning Center exige apellido: si solo
+ * hay una palabra se deja «(sin apellido)» para que quien la vea sepa que falta. El email o el teléfono pueden
+ * fallar sin impedir la creación (dominio no permitido, número raro…): se devuelven como `warnings`.
+ */
+async function createPerson({ name, email, phone, campusId }) {
+  const parts = tidyName(name).split(' ');
+  const attributes = { first_name: parts[0], last_name: parts.slice(1).join(' ') || '(sin apellido)' };
+  if (campusId) attributes.primary_campus_id = Number(campusId);
+  const json = await request('POST', '/people/v2/people', { body: { data: { type: 'Person', attributes } } });
+  const id = String(json.data.id);
+  const warnings = [];
+  if (email) {
+    try { await request('POST', `/people/v2/people/${id}/emails`, { body: { data: { type: 'Email', attributes: { address: String(email).trim(), location: 'Home', primary: true } } } }); }
+    catch (e) { warnings.push(`email: ${e.message}`); }
+  }
+  if (phone) {
+    try { await request('POST', `/people/v2/people/${id}/phone_numbers`, { body: { data: { type: 'PhoneNumber', attributes: { number: String(phone).trim(), location: 'Mobile', primary: true } } } }); }
+    catch (e) { warnings.push(`teléfono: ${e.message}`); }
+  }
+  return { id, url: `https://people.planningcenteronline.com/people/${id}`, warnings };
+}
+
+// Un workflow por ciudad con el mismo nombre: «Servir En Un Equipo (Barcelona)», «… (Madrid)», «… (Valencia) » (a veces
+// con espacios de más). Se localizan por nombre y no por id para que una ciudad nueva con su workflow funcione sola.
+const SERVE_WORKFLOW_RE = /^\s*Servir En Un Equipo\s*\((.+?)\)\s*$/i;
+let serveWorkflowCache = { at: 0, byCity: null };
+
+/** Workflow «Servir En Un Equipo» de esa ciudad ({ id, name, campusId }), o null si no existe o está archivado. */
+async function workflowForCity(cityName) {
+  if (!serveWorkflowCache.byCity || Date.now() - serveWorkflowCache.at > 3600 * 1000) {
+    const { data } = await getAll('/people/v2/workflows', { per_page: 100 });
+    const byCity = new Map();
+    for (const w of data) {
+      const m = SERVE_WORKFLOW_RE.exec(attrs(w).name || '');
+      if (m && !attrs(w).archived_at && !attrs(w).deleted_at) byCity.set(normName(m[1]), { id: String(w.id), name: attrs(w).name.trim(), campusId: attrs(w).campus_id ? String(attrs(w).campus_id) : null });
+    }
+    serveWorkflowCache = { at: Date.now(), byCity };
+  }
+  return serveWorkflowCache.byCity.get(normName(cityName)) || null;
+}
+
+/**
+ * Añade a la persona al workflow (primer paso, con el responsable por defecto de ese paso). Si ya tiene una
+ * tarjeta activa en ese mismo workflow no crea otra (devuelve la que había, con `existing: true`): así no se
+ * duplica por apuntarse dos veces ni por seguir existiendo el formulario antiguo de Planning Center. Una tarjeta
+ * ya completada o quitada no cuenta: si vuelve a apuntarse más adelante, tiene otra nueva.
+ */
+async function addToWorkflow(personId, workflowId) {
+  const { data } = await getAll(`/people/v2/people/${personId}/workflow_cards`, { per_page: 100 });
+  const active = data.find((c) => String(c.relationships?.workflow?.data?.id) === String(workflowId) && ['ready', 'snoozed'].includes(attrs(c).stage) && !attrs(c).removed_at);
+  if (active) return { cardId: String(active.id), existing: true };
+  const json = await request('POST', `/people/v2/workflows/${workflowId}/cards`, { body: { data: { type: 'WorkflowCard', attributes: { person_id: Number(personId) } } } });
+  return { cardId: String(json.data.id), existing: false };
 }
 
 // ---------- Campos de Bases 1 / Bases 2 / GC ----------
@@ -315,5 +389,5 @@ async function getGcInfo(personId) {
 }
 
 module.exports = {
-  PcoError, request, getAll, findPerson, getCourseStatus, addNote, deleteNote, fieldDone, phoneKey,
+  PcoError, request, getAll, findPerson, createPerson, workflowForCity, addToWorkflow, getCourseStatus, addNote, deleteNote, fieldDone, phoneKey,
   getGcInfo, gcGroupTypeIds, getFormStatus };

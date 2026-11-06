@@ -226,6 +226,10 @@ try { db.exec('ALTER TABLE applications ADD COLUMN deleted_at TEXT'); } catch { 
 try { db.exec('ALTER TABLE applications ADD COLUMN form_bases1 INTEGER'); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN form_bases2 INTEGER'); } catch { /* ya existe */ }
 try { db.exec('ALTER TABLE applications ADD COLUMN form_gc INTEGER'); } catch { /* ya existe */ }
+// Workflow «Servir En Un Equipo (ciudad)» de Planning Center: id de la tarjeta creada, y si todavía hay que
+// crearla (1 = pendiente; solo lo marcan las solicitudes nuevas, las que ya había no se tocan).
+try { db.exec('ALTER TABLE applications ADD COLUMN pco_card_id TEXT'); } catch { /* ya existe */ }
+try { db.exec('ALTER TABLE applications ADD COLUMN workflow_pending INTEGER NOT NULL DEFAULT 0'); } catch { /* ya existe */ }
 
 // El área «Domingo» (o «Operativo», si ya se había renombrado a mano en el panel) pasa a llamarse «Operativos».
 db.exec("UPDATE teams SET name = 'Operativos' WHERE parent_id IS NULL AND name IN ('Domingo', 'Operativo')");

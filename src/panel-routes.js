@@ -391,8 +391,8 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
 
   // Historial de sincronizaciones con Planning Center: fichas encontradas, notas escritas y errores (de sincronizar
   // los cursos o de escribir/borrar la nota). El admin total lo ve todo; el de ciudad, solo el de su ciudad.
-  const SYNC_EVENTS = ['pco_enlazada', 'nota_pco', 'nota_error', 'pco_error'];
-  const SYNC_LABEL = { pco_enlazada: 'Ficha encontrada en Planning Center', nota_pco: 'Nota escrita en Planning Center', nota_error: 'Error con la nota de Planning Center', pco_error: 'Error al sincronizar con Planning Center' };
+  const SYNC_EVENTS = ['pco_enlazada', 'pco_creada', 'workflow_ok', 'workflow_ya', 'workflow_error', 'nota_pco', 'nota_error', 'pco_error'];
+  const SYNC_LABEL = { pco_enlazada: 'Ficha encontrada en Planning Center', pco_creada: 'Ficha creada en Planning Center', workflow_ok: 'Añadida al workflow de Planning Center', workflow_ya: 'Ya estaba en el workflow de Planning Center', workflow_error: 'Error con el workflow de Planning Center', nota_pco: 'Nota escrita en Planning Center', nota_error: 'Error con la nota de Planning Center', pco_error: 'Error al sincronizar con Planning Center' };
   admin.get('/sync-log', (req, res) => {
     const cityWhere = req.user.role === 'city_admin' ? 'AND a.city_id IN (SELECT city_id FROM user_cities WHERE user_id = ?)' : '';
     const params = req.user.role === 'city_admin' ? [req.user.id] : [];
@@ -401,7 +401,7 @@ module.exports = function panelRoutes({ flow, pco, mail }) {
                               FROM application_events e JOIN applications a ON a.id = e.application_id JOIN cities c ON c.id = a.city_id
                               WHERE e.event IN (${placeholders}) ${cityWhere}
                               ORDER BY e.id DESC LIMIT 300`).all(...SYNC_EVENTS, ...params);
-    res.json(rows.map((r) => ({ ...r, label: SYNC_LABEL[r.event] || r.event, is_error: r.event === 'nota_error' || r.event === 'pco_error' })));
+    res.json(rows.map((r) => ({ ...r, label: SYNC_LABEL[r.event] || r.event, is_error: ['nota_error', 'pco_error', 'workflow_error'].includes(r.event) })));
   });
 
   admin.post('/applications/:id/reprocess', wrap(async (req, res) => {

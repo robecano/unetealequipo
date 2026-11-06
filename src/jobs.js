@@ -64,6 +64,7 @@ function start(flow) {
   const tick = guard('reintentos', async () => {
     await flow.retryReceived();
     await flow.retryNotes();
+    await flow.retryWorkflow();
   });
   const hourly = guard('resumen', async () => {
     const cities = db.prepare('SELECT id FROM cities').all();

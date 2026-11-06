@@ -336,3 +336,122 @@ test('sin líder de Bases o de GC en la ciudad: no se avisa a administración (y
   await flow.process(id);
   assert.equal(to('admin@test.es').length, 0, 'le falta Bases, pero eso ya no genera ningún aviso a administración');
 });
+
+// ---------- Workflow «Servir En Un Equipo (ciudad)» de Planning Center ----------
+function workflowFlow(overrides = {}) {
+  const calls = { findPerson: 0, createPerson: [], addToWorkflow: [], notes: [] };
+  const people = new Map(); // email → id, para que una segunda búsqueda encuentre lo creado
+  const pcoMock = {
+    findPerson: async ({ email }) => { calls.findPerson++; return people.has(email) ? { id: people.get(email) } : null; },
+    getCourseStatus: async () => ({ bases1: false, bases2: false }),
+    getGcInfo: async () => ({ inGc: false, groupName: null }),
+    addNote: async (pid, text) => calls.notes.push([pid, text]),
+    workflowForCity: async (city) => (city === 'Sin Workflow' ? null : { id: `W-${city}`, name: `Servir En Un Equipo (${city})`, campusId: 'C1' }),
+    createPerson: async (p) => { calls.createPerson.push(p); const id = `NEW-${calls.createPerson.length}`; people.set(p.email, id); await new Promise((r) => setTimeout(r, 20)); return { id, warnings: [] }; },
+    addToWorkflow: async (pid, wid) => { calls.addToWorkflow.push([pid, wid]); return { cardId: `CARD-${calls.addToWorkflow.length}`, existing: false }; },
+    ...overrides,
+  };
+  return { calls, people, f: createFlow({ pco: pcoMock, mail: { sendMail: async (m) => sent.push(m) } }) };
+}
+let wfSeq = 0;
+// Cada solicitud con un nombre distinto: dos con el mismo nombre y apellidos se toman por la misma persona.
+const applyWf = (email, cityName = 'Madrid', name = `Persona Workflow${++wfSeq} Prueba`) => {
+  const cityId = db.prepare('SELECT id FROM cities WHERE name = ?').get(cityName)?.id ?? Number(db.prepare('INSERT INTO cities (name) VALUES (?)').run(cityName).lastInsertRowid);
+  return Number(db.prepare(`INSERT INTO applications (name,email,phone,city_id,team_id,tenure_months,self_bases2) VALUES (?,?,'600111222',?,?,24,1)`).run(name, email, cityId, av).lastInsertRowid);
+};
+const eventsOf = (id, ev) => db.prepare('SELECT detail FROM application_events WHERE application_id=? AND event=?').all(id, ev).map((e) => e.detail);
+
+test('workflow: si ya tiene ficha en Planning Center, no se crea otra y se añade al workflow de su ciudad', async () => {
+  reset();
+  const { f, calls, people } = workflowFlow();
+  people.set('conficha@x.es', '77');
+  const id = applyWf('conficha@x.es', 'Madrid');
+  await f.process(id);
+  assert.equal(calls.createPerson.length, 0);
+  assert.deepEqual(calls.addToWorkflow, [['77', 'W-Madrid']]);
+  const row = db.prepare('SELECT pco_person_id, pco_card_id, workflow_pending FROM applications WHERE id=?').get(id);
+  assert.deepEqual({ ...row }, { pco_person_id: '77', pco_card_id: 'CARD-1', workflow_pending: 0 });
+  assert.match(eventsOf(id, 'workflow_ok')[0], /Servir En Un Equipo \(Madrid\)/);
+});
+
+test('workflow: sin ficha se crea con sus datos y el campus del workflow, se anotan sus notas, se leen sus cursos y se añade al workflow', async () => {
+  reset();
+  const { f, calls } = workflowFlow();
+  const id = applyWf('nueva@x.es', 'Barcelona', 'Nuria Pons');
+  assert.equal(await f.process(id), 'listo');
+  assert.deepEqual(calls.createPerson, [{ name: 'Nuria Pons', email: 'nueva@x.es', phone: '600111222', campusId: 'C1' }]);
+  assert.deepEqual(calls.addToWorkflow, [['NEW-1', 'W-Barcelona']]);
+  const row = db.prepare('SELECT pco_person_id, pco_bases1, pco_gc, note_synced FROM applications WHERE id=?').get(id);
+  assert.equal(row.pco_person_id, 'NEW-1');
+  assert.equal(row.pco_bases1, 0, 'ficha nueva: sin Bases 1 todavía');
+  assert.equal(row.note_synced, 1);
+  assert.match(calls.notes[0][1], /^Interesado en servir en AV/);
+  assert.match(calls.notes[1][1], /dice haber hecho Bases 2/, 'lo que declaró y no consta también queda anotado en la ficha nueva');
+  assert.equal(eventsOf(id, 'pco_creada').length, 1);
+  // El email a la persona sigue diciendo que no se encontró su ficha anterior (es lo que pasó al buscarla)
+  assert.match(to('nuria').length ? '' : sent.find((m) => m.to === 'nueva@x.es').html, /No hemos encontrado tu ficha/);
+});
+
+test('workflow: dos solicitudes casi a la vez de la misma persona (mismo email, o mismo nombre y apellidos) crean una sola ficha', async () => {
+  reset();
+  const { f, calls } = workflowFlow();
+  const a = applyWf('doble@x.es', 'Madrid', 'Tiffany Narro');
+  const b = applyWf('doble@x.es', 'Madrid', 'Tiffany Narro');
+  const c = applyWf('otro-email@x.es', 'Madrid', 'TIFFANY  narro');
+  await Promise.all([f.process(a), f.process(b), f.process(c)]);
+  assert.equal(calls.createPerson.length, 1, 'una sola ficha nueva para las tres');
+  const ids = [a, b, c].map((i) => db.prepare('SELECT pco_person_id FROM applications WHERE id=?').get(i).pco_person_id);
+  assert.deepEqual(new Set(ids), new Set(['NEW-1']));
+});
+
+test('workflow: si ya tenía una tarjeta activa (p. ej. del formulario antiguo) se deja constancia y no se crea otra', async () => {
+  reset();
+  const { f, people } = workflowFlow({ addToWorkflow: async () => ({ cardId: 'VIEJA', existing: true }) });
+  people.set('vieja@x.es', '88');
+  const id = applyWf('vieja@x.es', 'Valencia');
+  await f.process(id);
+  assert.equal(db.prepare('SELECT pco_card_id FROM applications WHERE id=?').get(id).pco_card_id, 'VIEJA');
+  assert.equal(eventsOf(id, 'workflow_ya').length, 1);
+  assert.equal(eventsOf(id, 'workflow_ok').length, 0);
+});
+
+test('workflow: ciudad sin workflow → no se crea ficha ni tarjeta, queda anotado y no se reintenta', async () => {
+  reset();
+  const { f, calls } = workflowFlow();
+  const id = applyWf('sinwf@x.es', 'Sin Workflow');
+  await f.process(id);
+  assert.equal(calls.createPerson.length + calls.addToWorkflow.length, 0);
+  assert.match(eventsOf(id, 'workflow_error')[0], /No hay workflow «Servir En Un Equipo \(Sin Workflow\)»/);
+  assert.equal(db.prepare('SELECT workflow_pending FROM applications WHERE id=?').get(id).workflow_pending, 0);
+});
+
+test('workflow: si Planning Center falla queda pendiente con el error a la vista, y retryWorkflow lo completa sin crear dos fichas', async () => {
+  reset();
+  let fail = true;
+  const { f, calls } = workflowFlow({ addToWorkflow: async (pid, wid) => { if (fail) throw new Error('Planning Center respondió 500'); return { cardId: 'OK', existing: false }; } });
+  const id = applyWf('reintento@x.es', 'Madrid');
+  assert.equal(await f.process(id), 'listo', 'la solicitud sigue adelante y el email a la persona sale igual');
+  let row = db.prepare('SELECT workflow_pending, pco_card_id, pco_person_id, error FROM applications WHERE id=?').get(id);
+  assert.equal(row.workflow_pending, 1);
+  assert.equal(row.pco_card_id, null);
+  assert.equal(row.pco_person_id, 'NEW-1', 'la ficha ya se había creado');
+  assert.match(row.error, /^Workflow de Planning Center: Planning Center respondió 500/);
+  await f.retryWorkflow();
+  assert.equal(eventsOf(id, 'workflow_error').length, 1, 'el mismo error no se repite en cada reintento');
+
+  fail = false;
+  await f.retryWorkflow();
+  row = db.prepare('SELECT workflow_pending, pco_card_id, error FROM applications WHERE id=?').get(id);
+  assert.deepEqual({ ...row }, { workflow_pending: 0, pco_card_id: 'OK', error: null });
+  assert.equal(calls.createPerson.length, 1, 'no se crea otra ficha al reintentar');
+});
+
+test('workflow: las solicitudes que ya había (sin marca de pendiente) no se tocan', async () => {
+  reset();
+  db.prepare('UPDATE applications SET workflow_pending=0').run();
+  const { f, calls } = workflowFlow();
+  const id = applyWf('antigua@x.es', 'Madrid');
+  db.prepare("UPDATE applications SET status='listo', pco_person_id='5' WHERE id=?").run(id);
+  await f.retryWorkflow();
+  assert.equal(calls.addToWorkflow.length, 0);
+});

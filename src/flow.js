@@ -3,6 +3,7 @@ const { db, logEvent, getSetting, setSetting } = require('./db');
 const emails = require('./emails');
 const { TEAM_LABEL } = require('./teams');
 const courses = require('./courses');
+const { normName } = require('./text');
 
 const FOLLOWUP_DAYS = 7;
 const OPEN = ['recibida', 'listo', 'contactado', 'visito'];
@@ -99,6 +100,83 @@ function createFlow({ pco, mail }) {
     }
   }
 
+  // Crear una ficha en Planning Center de una en una: si dos solicitudes de la misma persona entran casi a la vez,
+  // la segunda espera a que la primera termine y ya encuentra la ficha en vez de crear otra.
+  let creatingProfile = Promise.resolve();
+  const oneAtATime = (fn) => {
+    const run = creatingProfile.then(fn, fn);
+    creatingProfile = run.catch(() => {});
+    return run;
+  };
+
+  /** Error del workflow en el historial y en la fila de la solicitud; si es el mismo de hace menos de una hora no se repite en cada reintento. */
+  function workflowFailed(id, message) {
+    const last = db.prepare("SELECT detail, created_at FROM application_events WHERE application_id=? AND event='workflow_error' ORDER BY id DESC LIMIT 1").get(id);
+    if (!last || last.detail !== message || Date.now() - Date.parse(iso(last.created_at)) > 3600 * 1000) logEvent(id, null, 'workflow_error', message);
+    db.prepare('UPDATE applications SET error=?, updated_at=? WHERE id=?').run(`Workflow de Planning Center: ${message}`.slice(0, 300), now(), id);
+  }
+
+  /**
+   * Ficha de Planning Center de esta solicitud, cuando todavía no se había encontrado: otra solicitud de la misma
+   * persona (mismo email o mismo nombre y apellidos) que ya la tenga, la que aparezca al buscar de nuevo, o si no
+   * hay ninguna, una nueva con sus datos. Devuelve el id.
+   */
+  async function profileFor(a, workflow) {
+    const nameKey = normName(a.name);
+    const sameOwner = db.prepare('SELECT name, email, pco_person_id FROM applications WHERE id != ? AND pco_person_id IS NOT NULL').all(a.id)
+      .find((o) => o.email.toLowerCase() === a.email.toLowerCase() || (nameKey.split(' ').length >= 2 && normName(o.name) === nameKey));
+    let personId = sameOwner?.pco_person_id;
+    let how = 'enlazada';
+    if (!personId) {
+      const found = await pco.findPerson({ email: a.email, phone: a.phone, name: a.name });
+      personId = found?.id;
+    }
+    if (!personId) {
+      const created = await pco.createPerson({ name: a.name, email: a.email, phone: a.phone, campusId: workflow.campusId });
+      personId = created.id;
+      how = 'creada';
+      logEvent(a.id, null, 'pco_creada', `Ficha nueva en Planning Center (${personId})${created.warnings.length ? ` · sin guardar: ${created.warnings.join('; ')}` : ''}`);
+    } else {
+      logEvent(a.id, null, 'pco_enlazada', `Ya tiene ficha en Planning Center (${personId})`);
+    }
+    db.prepare('UPDATE applications SET pco_person_id=?, note_synced=0, notes_done=0, updated_at=? WHERE id=?').run(personId, now(), a.id);
+    await writeNotes(a.id);
+    await refreshOne(fullApp(a.id)); // lee sus cursos (una ficha nueva sale sin nada)
+    return { personId, how };
+  }
+
+  /**
+   * Mete a la persona en el workflow «Servir En Un Equipo (su ciudad)» de Planning Center, creando su ficha si no
+   * tenía. Si falla (Planning Center caído…) queda pendiente y se reintenta con el planificador; si esa ciudad
+   * no tiene workflow, no se crea nada.
+   */
+  async function syncToPco(id) {
+    if (typeof pco.workflowForCity !== 'function') return;
+    const a = fullApp(id);
+    if (!a || !a.workflow_pending) return;
+    try {
+      const workflow = await pco.workflowForCity(a.city);
+      if (!workflow) {
+        logEvent(id, null, 'workflow_error', `No hay workflow «Servir En Un Equipo (${a.city})» en Planning Center: no se ha creado ficha ni tarjeta`);
+        db.prepare('UPDATE applications SET workflow_pending=0 WHERE id=?').run(id);
+        return;
+      }
+      let personId = a.pco_person_id;
+      if (!personId) personId = (await oneAtATime(() => profileFor(fullApp(id), workflow))).personId;
+      const card = await pco.addToWorkflow(personId, workflow.id);
+      db.prepare("UPDATE applications SET pco_card_id=?, workflow_pending=0, error=CASE WHEN error LIKE 'Workflow%' THEN NULL ELSE error END, updated_at=? WHERE id=?").run(card.cardId, now(), id);
+      logEvent(id, null, card.existing ? 'workflow_ya' : 'workflow_ok', card.existing ? `${workflow.name}: ya tenía una tarjeta activa, no se ha creado otra` : `Añadida al workflow ${workflow.name}`);
+    } catch (e) {
+      workflowFailed(id, e.message);
+    }
+  }
+
+  /** Reintenta las solicitudes que se quedaron sin entrar en el workflow (Planning Center no respondía…). */
+  async function retryWorkflow() {
+    const rows = db.prepare("SELECT id FROM applications WHERE workflow_pending=1 AND deleted_at IS NULL AND status != 'recibida' ORDER BY id LIMIT 20").all();
+    for (const r of rows) await syncToPco(r.id);
+  }
+
   async function process(id) {
     let a = fullApp(id);
     if (!a || a.status !== 'recibida') return a?.status;
@@ -143,6 +221,7 @@ function createFlow({ pco, mail }) {
       form_bases1: forms.bases1,
       form_bases2: forms.bases2,
       form_gc: forms.gc,
+      ...(typeof pco.workflowForCity === 'function' ? { workflow_pending: 1 } : {}),
     });
     const after = fullApp(id); // con los datos recién calculados, para el resto del proceso
     const missing = courses.missing(after);
@@ -151,6 +230,7 @@ function createFlow({ pco, mail }) {
 
     await writeNotes(id);
     await safeMail(id, 'aviso a la persona', emails.applicantEmail({ app: after, team, missing, mismatched, notFoundInPco: !person }, after.city_id), a.email);
+    await syncToPco(id);
     return 'listo';
   }
 
@@ -287,7 +367,7 @@ function createFlow({ pco, mail }) {
     return sent;
   }
 
-  return { process, retryReceived, retryNotes, refreshCourses, refreshApplication, refreshMany, sendDigests, sendDigestsForCity };
+  return { process, retryReceived, retryNotes, retryWorkflow, refreshCourses, refreshApplication, refreshMany, sendDigests, sendDigestsForCity };
 }
 
 module.exports = { createFlow, fullApp, FOLLOWUP_DAYS, OPEN, inDays, now, noteTexts, forTemplate };
